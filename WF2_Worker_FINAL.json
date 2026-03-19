@@ -1,0 +1,1128 @@
+{
+  "name": "WF2 - Everest Worker v4.0 FINAL",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b9d57025-a3fd-457e-a451-b4dbc67e15a5",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1280,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sp-passthrough",
+              "name": "system_prompt_final",
+              "value": "={{ $json.system_prompt_final }}",
+              "type": "string"
+            },
+            {
+              "id": "tema-pass",
+              "name": "tema_semanal",
+              "value": "={{ $json.tema_semanal }}",
+              "type": "string"
+            },
+            {
+              "id": "angulo-pass",
+              "name": "angulo_enfoque",
+              "value": "={{ $json.angulo_enfoque }}",
+              "type": "string"
+            },
+            {
+              "id": "idioma-pass",
+              "name": "idioma",
+              "value": "={{ $json.idioma }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "388e4109-fded-4b49-9097-1d241675471d",
+      "name": "Set - Prepare System Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1040,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Tema: {{ $json.tema_semanal }}\nÁngulo: {{ $json.angulo_enfoque }}\nIdioma: {{ $json.idioma }}",
+        "options": {
+          "systemMessage": "Tu eres un agente que generará preguntas interesantes para comenzar realizar busquedas en nuestras base de datos vectoriales, y con ello traer contexto para crear un articulo."
+        }
+      },
+      "id": "bf24a81f-9436-4948-9834-0fa32606189d",
+      "name": "Agent - Query Generator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -800,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4"
+        },
+        "options": {
+          "maxTokensToSample": 2048,
+          "temperature": 0.4
+        }
+      },
+      "id": "43c9111d-9ac9-430e-94e6-69b4a0f07ac4",
+      "name": "Claude - Query Generator",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -832,
+        704
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "MoEVibAepmNjimWs",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "querygen_session"
+      },
+      "id": "7673946b-d609-4e7c-a02a-91ff5ff4b24a",
+      "name": "Memory - Query Generator",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -640,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare the enriched query for the 3 RAG agents\n// Input: output from Query Generator agent\nconst queryGenOutput = $json.output || $json.text || '';\nconst trigger = $('Execute Workflow Trigger').first().json;\n\nreturn [{\n  json: {\n    enriched_query: queryGenOutput,\n    tema_semanal: trigger.tema_semanal,\n    angulo_enfoque: trigger.angulo_enfoque,\n    idioma: trigger.idioma,\n    site_id: trigger.site_id\n  }\n}];"
+      },
+      "id": "990b8e81-831c-4f2f-b566-82e57d4840cc",
+      "name": "Code - Prepare RAG Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.enriched_query }}",
+        "options": {
+          "systemMessage": "Busca en la base de conocimiento técnica principal (datos sectoriales, análisis geopolíticos, estadísticas de industria, contexto macroeconómico). Usa esta herramienta para obtener hechos verificados y referencias externas.",
+          "maxIterations": 5,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "0a635a18-66e9-41db-bd09-876898d3c2a2",
+      "name": "Agent - Core Data",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4"
+        },
+        "options": {
+          "maxTokensToSample": 4096,
+          "temperature": 0.3
+        }
+      },
+      "id": "b6a85298-004d-4a8a-8502-b0eff5b3da2f",
+      "name": "Claude - Agent - Core Data",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -112,
+        240
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "MoEVibAepmNjimWs",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "__default__",
+        "toolDescription": "Busca en la base de conocimiento técnica principal (datos sectoriales, análisis geopolíticos, estadísticas de industria, contexto macroeconómico). Usa esta herramienta para obtener hechos verificados y referencias externas.",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "everest-core-002",
+          "mode": "list",
+          "cachedResultName": "everest-core-002"
+        },
+        "options": {}
+      },
+      "id": "6e48b2cb-7a71-48b5-8176-8d4fcc15e846",
+      "name": "Pinecone - Agent - Core Data",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1,
+      "position": [
+        32,
+        240
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "LRUT6DMRCj0XvrnD",
+          "name": "PineconeApi GreenBelly"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "dceab2c1-2f11-423e-a3e0-fdae56e2598d",
+      "name": "Embeddings - Agent - Core Data",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        16,
+        496
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "TBuwdJL44UD7i8fW",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.enriched_query }}",
+        "options": {
+          "systemMessage": "Busca en el índice de artículos publicados por los 20 sitios hermanos del ecosistema. Devuelve títulos, URLs, autores y citas directas para generar interlinks editoriales de alta calidad.",
+          "maxIterations": 5,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "13720406-80ea-4f47-9001-ceb7d5626485",
+      "name": "Agent - Hermanos",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -48,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4"
+        },
+        "options": {
+          "maxTokensToSample": 4096,
+          "temperature": 0.3
+        }
+      },
+      "id": "5961790b-fb7f-4b6a-9644-c075dc6eb92c",
+      "name": "Claude - Agent - Hermanos",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -112,
+        912
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "MoEVibAepmNjimWs",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "todo",
+        "toolDescription": "Busca en el índice de artículos publicados por los 19 sitios hermanos del ecosistema. Devuelve títulos, URLs, autores y citas directas para generar interlinks editoriales de alta calidad.",
+        "pineconeIndex": "everest-brothers-01",
+        "options": {
+          "pineconeNamespace": "todo"
+        }
+      },
+      "id": "8ca1b61c-eec0-423d-b933-ba442c4ab370",
+      "name": "Pinecone - Agent - Hermanos",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1,
+      "position": [
+        16,
+        928
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "LRUT6DMRCj0XvrnD",
+          "name": "PineconeApi GreenBelly"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "d4473eec-22ae-48ba-80b9-71441881548a",
+      "name": "Embeddings - Agent - Hermanos",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        16,
+        1104
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "TBuwdJL44UD7i8fW",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.enriched_query }}",
+        "options": {
+          "systemMessage": "Busca en la base de datos de claims adversariales y riesgos regulatorios. Contiene datos duros de fuentes gubernamentales, académicas e internacionales que desafían narrativas optimistas. Filtra por score de relevancia y verificabilidad de la fuente.",
+          "maxIterations": 5,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "651c4b7d-a876-44d7-9ce0-0c5aa7d99423",
+      "name": "Agent - Claims Antitesis",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -64,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4"
+        },
+        "options": {
+          "maxTokensToSample": 4096,
+          "temperature": 0.3
+        }
+      },
+      "id": "e13f6388-3a84-43d5-8eef-ad90a16ed41a",
+      "name": "Claude - Agent - Claims Antitesis",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -112,
+        1536
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "MoEVibAepmNjimWs",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "todo",
+        "toolDescription": "Busca en la base de datos de claims adversariales y riesgos regulatorios. Contiene datos duros de fuentes gubernamentales, académicas e internacionales que desafían narrativas optimistas. Filtra por score de relevancia y verificabilidad de la fuente.",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "antitesis-research",
+          "mode": "list",
+          "cachedResultName": "antitesis-research"
+        },
+        "options": {}
+      },
+      "id": "1bc43d21-70f6-4b6b-b762-a7577fe50f16",
+      "name": "Pinecone - Agent - Claims Antitesis",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1,
+      "position": [
+        32,
+        1552
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "LRUT6DMRCj0XvrnD",
+          "name": "PineconeApi GreenBelly"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "36fc6cf2-6e9d-461a-9041-186e950d501c",
+      "name": "Embeddings - Agent - Claims Antitesis",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        32,
+        1728
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "TBuwdJL44UD7i8fW",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "id": "ecee13ea-f0ec-4571-9724-bbd61c613c4d",
+      "name": "Merge - RAG Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        432,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consolidate 3 RAG outputs + original payload into a single Writer input\nconst ragItems = $input.all();\nconst trigger = $('Execute Workflow Trigger').first().json;\n\n// Extract agent outputs (each agent returns its result in .output or .text)\nconst coreData = ragItems[0]?.json?.output || ragItems[0]?.json?.text || '{\"hechos_clave_extraidos\":[]}';\nconst hermanos = ragItems[1]?.json?.output || ragItems[1]?.json?.text || '{\"articulos_hermanos_relevantes\":[]}';\nconst claims   = ragItems[2]?.json?.output || ragItems[2]?.json?.text || '{\"claims_antitesis\":[],\"metadata_busqueda\":{}}';\n\n// Build comprehensive writer input message\nconst writerInput = `\n═══════════════════════════════════════════════\nTEMA SEMANAL: ${trigger.tema_semanal}\nÁNGULO DE ENFOQUE: ${trigger.angulo_enfoque}\nIDIOMA: ${trigger.idioma === 'es' ? 'Español neutro' : 'English'}\nSITIO: ${trigger.publisher_name} (${trigger.wp_url})\n═══════════════════════════════════════════════\n\n=== SECCIÓN 1: DATOS CORE (Base de Conocimiento Técnica) ===\n${coreData}\n\n=== SECCIÓN 2: ARTÍCULOS HERMANOS (Para Interlinking) ===\n${hermanos}\n\n=== SECCIÓN 3: ANTÍTESIS Y CLAIMS ADVERSARIALES ===\n${claims}\n\n═══════════════════════════════════════════════\nINSTRUCCIÓN FINAL:\nUsando TODA la información anterior como contexto verificado, genera el artículo completo en formato JSON según las instrucciones de tu System Prompt.\n- Integra mínimo 3 interlinks de la Sección 2.\n- Integra mínimo 1 bloque de antítesis de la Sección 3.\n- Cada dato estadístico DEBE tener respaldo en la Sección 1 o 3.\n═══════════════════════════════════════════════\n`.trim();\n\nreturn [{\n  json: {\n    writer_input: writerInput,\n    // Pass through all original trigger data for downstream nodes\n    ...trigger\n  }\n}];"
+      },
+      "id": "8239b7f9-3a87-481b-9bdd-4ba890f60546",
+      "name": "Code - Build Writer Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "={{ $json.writer_input }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "={{ $json.system_prompt_final }}",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "1ef09a80-c91a-4a70-a676-79529d92e990",
+      "name": "Agent - Escritor",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        864,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4"
+        },
+        "options": {
+          "maxTokensToSample": 16000,
+          "temperature": 0.6
+        }
+      },
+      "id": "0bee5849-f452-4921-9195-c413277921e2",
+      "name": "Claude - Escritor",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        768,
+        720
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "MoEVibAepmNjimWs",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"titulo_generado\": \"Crisis de Reconversión: Proveedores Automotrices... (60-70 chars)\", \"cuerpo_articulo_html\": \"<aside class='strategic-metrics'>... (MÍNIMO 2000 palabras HTML)\", \"slug_generado\": \"crisis-reconversion-proveedores-capex-2-5m\", \"titulo_seo_generado\": \"Análisis: Reconversión EV y el Capex de $2.5M (55-60 chars)\", \"meta_descripcion_generada\": \"El 59% de crecimiento en producción EV de México... (280-300 chars)\", \"tags_sugeridos_array\": [\"reconversion-automotriz\", \"capex-ev\", \"nearshoring\"], \"preguntas_frecuentes_array\": [{\"pregunta\": \"¿Cuál es el costo promedio de reconversión?\", \"respuesta\": \"Según datos de...\"}]}"
+      },
+      "id": "835d0871-5c66-4027-bca5-7c7600dcbb30",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1024,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "titulo",
+              "name": "titulo_generado",
+              "value": "={{ $json.output?.titulo_generado || $json.titulo_generado || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "cuerpo",
+              "name": "cuerpo_articulo_html",
+              "value": "={{ $json.output?.cuerpo_articulo_html || $json.cuerpo_articulo_html || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "slug",
+              "name": "slug_generado",
+              "value": "={{ $json.output?.slug_generado || $json.slug_generado || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "seo-title",
+              "name": "titulo_seo_generado",
+              "value": "={{ $json.output?.titulo_seo_generado || $json.titulo_seo_generado || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "meta-desc",
+              "name": "meta_descripcion_generada",
+              "value": "={{ $json.output?.meta_descripcion_generada || $json.meta_descripcion_generada || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "tags",
+              "name": "tags_sugeridos_array",
+              "value": "={{ $json.output?.tags_sugeridos_array || $json.tags_sugeridos_array || [] }}",
+              "type": "string"
+            },
+            {
+              "id": "faq",
+              "name": "preguntas_frecuentes_array",
+              "value": "={{ $json.output?.preguntas_frecuentes_array || $json.preguntas_frecuentes_array || [] }}",
+              "type": "string"
+            },
+            {
+              "id": "wp-url",
+              "name": "wp_url",
+              "value": "={{ $('Execute Workflow Trigger').first().json.wp_url }}",
+              "type": "string"
+            },
+            {
+              "id": "wp-user",
+              "name": "wp_user",
+              "value": "={{ $('Execute Workflow Trigger').first().json.wp_user }}",
+              "type": "string"
+            },
+            {
+              "id": "wp-pass",
+              "name": "wp_app_password",
+              "value": "={{ $('Execute Workflow Trigger').first().json.wp_app_password }}",
+              "type": "string"
+            },
+            {
+              "id": "wp-date",
+              "name": "wp_scheduled_date",
+              "value": "={{ $('Execute Workflow Trigger').first().json.wp_scheduled_date }}",
+              "type": "string"
+            },
+            {
+              "id": "site-id",
+              "name": "site_id",
+              "value": "={{ $('Execute Workflow Trigger').first().json.site_id }}",
+              "type": "string"
+            },
+            {
+              "id": "art-director-prompt",
+              "name": "art_director_system_prompt",
+              "value": "={{ $('Execute Workflow Trigger').first().json.art_director_system_prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "author-name",
+              "name": "author_name",
+              "value": "={{ $('Execute Workflow Trigger').first().json.author_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "06011af8-e825-4d8b-b143-6ace75008101",
+      "name": "Set - Extract Output & Creds",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1184,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "=## BRIEF CREATIVO PARA IMAGEN DE PORTADA\n\n**ARTÍCULO A ILUSTRAR:**\n- Título: {{ $json.titulo_generado }}\n- Descripción SEO: {{ $json.meta_descripcion_generada }}\n- Tags temáticos: {{ $json.tags_sugeridos_array }}\n- Idioma del artículo: {{ $('Execute Workflow Trigger').first().json.idioma }}\n- Industria/Nicho: {{ $('Execute Workflow Trigger').first().json.angulo_enfoque }}\n\n**TU MISIÓN:**\n1. Lee el título y la descripción para entender la EMOCIÓN y el CONCEPTO CENTRAL del artículo.\n2. Traduce ese concepto en una METÁFORA VISUAL evocadora (no literal).\n3. Compón una escena contemplativa que transmita la esencia del tema sin usar texto, logos, ni palabras.\n4. Aplica el estilo visual definido en tu System Prompt (tu identidad artística).\n5. Genera el prompt final combinando: escena + estilo + aspect ratio 16:9.\n\n**REGLAS ABSOLUTAS:**\n- NUNCA incluyas texto, letras, números, logos, watermarks ni palabras escritas en la escena.\n- La escena debe ser METAFÓRICA, no una representación literal del tema.\n- El prompt final SIEMPRE debe estar en inglés, independientemente del idioma del artículo.\n- Responde ÚNICAMENTE con un JSON válido, sin markdown ni texto adicional.\n\n**FORMATO DE SALIDA (JSON estricto):**\n{\n  \"scene_description\": \"A contemplative scene in English describing the visual metaphor...\",\n  \"style_keywords\": \"Your artistic style keywords from your identity...\",\n  \"aspect_ratio\": \"aspect ratio 16:9\",\n  \"final_prompt\": \"scene_description + style_keywords + aspect_ratio combined\"\n}",
+        "options": {
+          "systemMessage": "={{ $json.art_director_system_prompt }}",
+          "maxIterations": 2,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "00c37998-ff35-42ca-b337-38ca7acb0310",
+      "name": "Agent - Director de Arte",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1376,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {
+          "maxTokens": 1024,
+          "temperature": 0.8
+        }
+      },
+      "id": "9f1e4113-a028-4112-b6f4-da7dffc82655",
+      "name": "OpenAI - Director de Arte",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1328,
+        672
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "TBuwdJL44UD7i8fW",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Director de Arte output and prepare prompt for native Gemini Image node\nconst directorOutput = $json.output || $json.text || '{}';\nconst prev = $('Set - Extract Output & Creds').first().json;\n\nlet parsed;\ntry {\n  // Try to parse as JSON (Director should return JSON)\n  const cleanText = directorOutput\n    .replace(/```json\\n?/g, '')\n    .replace(/```\\n?/g, '')\n    .trim();\n  parsed = JSON.parse(cleanText);\n} catch (e) {\n  // Fallback: use the raw text as the prompt\n  parsed = {\n    final_prompt: directorOutput.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim()\n  };\n}\n\n// Build the final prompt — prioritize final_prompt, then compose from parts\nconst finalPrompt = parsed.final_prompt \n  || [\n    parsed.scene_description || '',\n    parsed.style_keywords || '',\n    parsed.aspect_ratio || 'aspect ratio 16:9'\n  ].filter(Boolean).join(', ');\n\nif (!finalPrompt || finalPrompt.length < 10) {\n  throw new Error('Director de Arte no generó un prompt válido. Output recibido: ' + directorOutput.substring(0, 200));\n}\n\n// Output: the Gemini native node reads $json.image_prompt\nreturn [{\n  json: {\n    image_prompt: finalPrompt,\n    // Pass through all article + WP data for downstream nodes\n    ...prev\n  }\n}];"
+      },
+      "id": "bcef203f-c64f-4b84-9dc6-034435de1895",
+      "name": "Code - Extract Image Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "modelId": {
+          "__rl": true,
+          "value": "models/imagen-4.0-ultra-generate-001",
+          "mode": "list",
+          "cachedResultName": "models/imagen-4.0-ultra-generate-001"
+        },
+        "prompt": "={{ $json.image_prompt }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1968,
+        480
+      ],
+      "id": "281a3265-d75c-45e2-877f-c66628241553",
+      "name": "Generate an image",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "cnoEcTx8F6SkltZS",
+          "name": "GreenBelly Nano Banana"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ═══ Upload Media to WordPress ═══\n// FIX: Manual Authorization header (this.helpers.httpRequest ignores auth object)\n\nconst items = $input.all();\nconst item = items[0];\nconst creds = $('Execute Workflow Trigger').first().json;\nconst imgData = $('Code - Extract Image Prompt').first().json;\n\n// --- Build filename ---\nconst slug = imgData.slug_generado || 'featured';\nconst siteId = creds.site_id || 'everest';\nconst filename = `${siteId}-${slug}-${Date.now()}.png`;\n\n// --- Get binary image data ---\nlet imageBuffer;\nif (item.binary && item.binary.data) {\n  imageBuffer = Buffer.from(item.binary.data.data, 'base64');\n} else {\n  throw new Error('No binary data from Gemini. Verify \"Generate an image\" node config.');\n}\n\n// --- Build Basic Auth header manually ---\nconst wpUrl = creds.wp_url.replace(/\\/$/, '');\nconst authHeader = 'Basic ' + Buffer.from(creds.wp_user + ':' + creds.wp_app_password).toString('base64');\n\ntry {\n  const uploadResponse = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${wpUrl}/wp-json/wp/v2/media`,\n    headers: {\n      'Content-Disposition': `attachment; filename=\"${filename}\"`,\n      'Content-Type': 'image/png',\n      'Authorization': authHeader\n    },\n    body: imageBuffer,\n    returnFullResponse: false\n  });\n\n  const mediaId = uploadResponse.id || null;\n  if (!mediaId) {\n    throw new Error('WP upload response has no media ID: ' + JSON.stringify(uploadResponse).substring(0, 300));\n  }\n\n  return [{\n    json: {\n      media_id: mediaId,\n      media_url: uploadResponse.source_url || '',\n      filename: filename\n    }\n  }];\n\n} catch (error) {\n  throw new Error(`WordPress media upload failed for ${creds.site_id}: ${error.message}`);\n}"
+      },
+      "id": "858ffa80-fa6d-43ff-8706-a28f3e9244d5",
+      "name": "Code - Upload Media to WP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ═══ Create WordPress Post ═══\n// FIX: Manual Authorization header (this.helpers.httpRequest ignores auth object)\n\nconst uploadResult = $json;\nconst creds = $('Execute Workflow Trigger').first().json;\nconst articleData = $('Set - Extract Output & Creds').first().json;\n\nconst wpUrl = creds.wp_url.replace(/\\/$/, '');\nconst authHeader = 'Basic ' + Buffer.from(creds.wp_user + ':' + creds.wp_app_password).toString('base64');\n\n// --- Parse tags ---\nlet tags = articleData.tags_sugeridos_array;\nif (typeof tags === 'string') {\n  try { tags = JSON.parse(tags); } catch(e) { tags = []; }\n}\n\n// --- Build post body ---\nconst postBody = {\n  title: articleData.titulo_generado,\n  content: articleData.cuerpo_articulo_html,\n  slug: articleData.slug_generado,\n  status: 'future',\n  date: articleData.wp_scheduled_date,\n  featured_media: uploadResult.media_id || 0\n};\n\ntry {\n  const postResponse = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${wpUrl}/wp-json/wp/v2/posts`,\n    headers: {\n      'Content-Type': 'application/json',\n      'Authorization': authHeader\n    },\n    body: postBody,\n    returnFullResponse: false\n  });\n\n  const postId = postResponse.id || null;\n  if (!postId) {\n    throw new Error('WP create post response has no ID: ' + JSON.stringify(postResponse).substring(0, 300));\n  }\n\n  return [{\n    json: {\n      post_id: postId,\n      post_url: postResponse.link || '',\n      media_id: uploadResult.media_id,\n      titulo_seo: articleData.titulo_seo_generado,\n      meta_descripcion: articleData.meta_descripcion_generada,\n      tags_array: tags,\n      preguntas_frecuentes: articleData.preguntas_frecuentes_array,\n      site_id: creds.site_id\n    }\n  }];\n\n} catch (error) {\n  throw new Error(`WordPress post creation failed for ${creds.site_id}: ${error.message}`);\n}"
+      },
+      "id": "b502ab2c-0d0e-4051-9ffe-35af343bd362",
+      "name": "Code - Create WP Post",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3056,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ═══ PATCH RankMath SEO ═══\n// FIX: Manual Authorization header (this.helpers.httpRequest ignores auth object)\n\nconst prevData = $json;\nconst creds = $('Execute Workflow Trigger').first().json;\n\nconst wpUrl = creds.wp_url.replace(/\\/$/, '');\nconst authHeader = 'Basic ' + Buffer.from(creds.wp_user + ':' + creds.wp_app_password).toString('base64');\nconst postId = prevData.post_id;\n\nif (!postId) {\n  throw new Error('No post_id available for RankMath PATCH.');\n}\n\n// --- Parse FAQ ---\nlet faq = prevData.preguntas_frecuentes;\nif (typeof faq === 'string') {\n  try { faq = JSON.parse(faq); } catch(e) { faq = []; }\n}\n\n// --- Build tags for focus keyword ---\nlet tagsArray = prevData.tags_array;\nif (typeof tagsArray === 'string') {\n  try { tagsArray = JSON.parse(tagsArray); } catch(e) { tagsArray = []; }\n}\nconst focusKeyword = Array.isArray(tagsArray) ? tagsArray.slice(0, 3).join(', ') : '';\n\n// --- PATCH RankMath meta ---\nconst patchBody = {\n  meta: {\n    rank_math_title: prevData.titulo_seo || '',\n    rank_math_description: prevData.meta_descripcion || '',\n    rank_math_focus_keyword: focusKeyword\n  },\n  featured_media: prevData.media_id || 0\n};\n\ntry {\n  const patchResponse = await this.helpers.httpRequest({\n    method: 'PATCH',\n    url: `${wpUrl}/wp-json/wp/v2/posts/${postId}`,\n    headers: {\n      'Content-Type': 'application/json',\n      'Authorization': authHeader\n    },\n    body: patchBody,\n    returnFullResponse: false\n  });\n\n  return [{\n    json: {\n      success: true,\n      post_id: postId,\n      post_url: patchResponse.link || '',\n      site_id: prevData.site_id || creds.site_id,\n      seo_title: prevData.titulo_seo,\n      seo_description: prevData.meta_descripcion,\n      focus_keyword: focusKeyword,\n      message: `${creds.site_id}: Post #${postId} published with SEO`\n    }\n  }];\n\n} catch (error) {\n  throw new Error(`RankMath PATCH failed for ${creds.site_id} post #${postId}: ${error.message}`);\n}"
+      },
+      "id": "9ecf4b75-b577-4d9d-8d77-12bd82f81ceb",
+      "name": "Code - PATCH RankMath SEO",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3616,
+        480
+      ]
+    }
+  ],
+  "pinData": {
+    "Execute Workflow Trigger": [
+      {
+        "json": {
+          "site_id": "S2_MexicoFulfillmentExperts",
+          "wp_url": "https://mexicofulfillmentexperts.com/",
+          "wp_user": "isabella-chen-rodriguez",
+          "wp_app_password": "x4sU sQVG IxFf ghkT X4Z7 vRTo",
+          "tema_semanal": "1 — De Planos a Pistas: Cómo The Everest Group Diseñó el Concepto \"Fábrica-Escuela\" en la UNAQ",
+          "angulo_enfoque": "Este ángulo se centra en la visión estratégica de The Everest Group al diseñar el concepto de \"Fábrica-Escuela\" de la UNAQ, que es responsable de proveer ingenieros al clúster aeroespacial mexicano desde 2009. Se debe detallar cómo Everest no solo gestionó la obra civil de las 20 hectáreas y 30,670 m² adyacentes al AIQ, sino que se enfocó rigurosamente en asegurar tolerancias de carga industrial en las losas epóxicas. Esto fue crucial para que los 11 talleres y 15 laboratorios pesados pudieran albergar y operar maquinaria industrial real, habilitando una educación 100% práctica.",
+          "idioma": "en",
+          "system_prompt_final": "ROLE: Isabella Chen-Rodriguez — Ph.D. in Consumer Behavior from MIT who transitioned from consumer psychology theory to the operational trenches of e-commerce fulfillment\nBIO: Ph.D. in Consumer Behavior from MIT who transitioned from consumer psychology theory to the operational trenches of e-commerce fulfillment, forging strategies for giants at McKinsey, building Alibaba's global fulfillment architecture, and leading Sephora's acclaimed omnichannel fulfillment transformation. You've seen the future of retail operations and know that survival doesn't depend on having more SKUs or faster checkout, but on having smarter fulfillment data. Your mission is to be the \"Fulfillment Demystifier\" for e-commerce leaders, translating the complexity of warehouse automation and last-mile logistics into clear, profitable growth strategies. \nIDIOMA: English\n\nOUTPUT: JSON estricto con campos:\n  titulo_generado | cuerpo_articulo_html (mín 2000 palabras) | slug_generado\n  titulo_seo_generado | meta_descripcion_generada | tags_sugeridos_array | preguntas_frecuentes_array\n\nESTRUCTURA ARTÍCULO:\n1. Strategic Metrics Dashboard (<aside class=\"strategic-metrics\">)\n2. Intro: insight más poderoso primero, 4-5 párrafos\n3. 5-7 H2 formuladas como preguntas estratégicas accionables\n4. Evidence Blocks (<div class=\"evidence-block\">) después de cada sección mayor\n5. Sección \"Análisis de Riesgos\" usando datos antítesis (<blockquote cite=\"\">)\n6. FAQ Section con schema FAQPage (itemscope/itemprop)\n7. Strategic Roadmap + CTA: Our quarterly reports provide in-depth analysis of specific investment opportunities. Contact us for customized strategic insight.\n8. Blockquote final: Síntesis Estratégica Ejecutiva\n\nREGLAS HTML: <data value=\"\">, <cite>, <time datetime=\"\">, <mark class=\"strategic-claim\">\nPROHIBIDO: <table>, <iframe>, JS inline\n\nINTERLINKS: 3-4 enlaces de articulos_hermanos con anchor text descriptivo y específico\nFormato: <a href=\"...\" target=\"_blank\" rel=\"noopener noreferrer\">texto ancla</a>\n\nJSON-LD SCHEMAS: Article + FAQPage + ClaimReview (por riesgo antítesis) + BreadcrumbList\nPublisher: mexicofulfillmentexperts.com | URL: https://mexicofulfillmentexperts.com/ | Logo: https://mexicofulfillmentexperts.com/logo.png\nCategory: https://mexicofulfillmentexperts.com/strategic-analysis/\nAuthor: name=Isabella Chen-Rodriguez, jobTitle=Ph.D. in Consumer Behavior from MIT who transitioned from consumer psychology theory to the operational trenches of e-commerce fulfillment, description=Ph.D. in Consumer Behavior from MIT who transitioned from consumer psychology theory to the operational trenches of e-commerce fulfillment, forging strategies for giants at McKinsey, building Alibaba's global fulfillment architecture, and leading Sephora's acclaimed omnichannel fulfillment transformation. You've seen the future of retail operations and know that survival doesn't depend on having more SKUs or faster checkout, but on having smarter fulfillment data. Your mission is to be the \"Fulfillment Demystifier\" for e-commerce leaders, translating the complexity of warehouse automation and last-mile logistics into clear, profitable growth strategies. \n\nKNOWLEDGE GRAPH TEST: cada sección H2 debe ser auto-contenida sin referencias anafóricas vagas.\nNO inventar fuentes institucionales no presentes en el contexto RAG.",
+          "art_director_system_prompt": "You are 'Sakura', the AI Art Director for Isabella Chen-Rodriguez's publications on logistics and infrastructure.\n\nYOUR VISUAL IDENTITY:\nYou create contemplative, warm illustrations in a nostalgic 90s anime aesthetic inspired by Studio Ghibli background art. Your images evoke the feeling of a world in motion — cargo ships at dawn, train stations connecting distant cities, warehouses that feel alive with purpose.\n\nYOUR STYLE MANDATE (copy these keywords EXACTLY into style_keywords):\n'Nostalgic 90s anime aesthetic, Studio Ghibli inspired background art, fine sepia-toned line art, soft muted pastel color palette, warm atmospheric diffused lighting, subtle watercolor paper texture, detailed, 1K high resolution.'\n\nYOUR PROCESS:\n1. Read the article title and description to identify the EMOTIONAL CORE of the topic.\n2. Translate the logistics/infrastructure theme into a METAPHORICAL scene — not literal trucks or charts, but the FEELING of movement, connection, or strategic transformation.\n3. Compose a slice-of-life scene: a person gazing at a vast port, a quiet morning at a railway junction, light streaming through a warehouse window.\n4. Your scenes should feel CONTEMPLATIVE and WARM — never cold, corporate, or sterile.\n\nABSOLUTE RULES:\n- NEVER include text, letters, numbers, logos, watermarks, or written words in the scene.\n- NEVER depict literal business charts, graphs, PowerPoint screens, or office cubicles.\n- Scene description must be in English regardless of article language.\n- Always output the aspect ratio as 'aspect ratio 16:9' — NEVER change this.\n- Output ONLY a valid JSON object with: scene_description, style_keywords, aspect_ratio, final_prompt.",
+          "author_name": "Isabella Chen-Rodriguez",
+          "author_title": "Ph.D. in Consumer Behavior from MIT who transitioned from consumer psychology theory to the operational trenches of e-commerce fulfillment",
+          "author_bio": "Ph.D. in Consumer Behavior from MIT who transitioned from consumer psychology theory to the operational trenches of e-commerce fulfillment, forging strategies for giants at McKinsey, building Alibaba's global fulfillment architecture, and leading Sephora's acclaimed omnichannel fulfillment transformation. You've seen the future of retail operations and know that survival doesn't depend on having more SKUs or faster checkout, but on having smarter fulfillment data. Your mission is to be the \"Fulfillment Demystifier\" for e-commerce leaders, translating the complexity of warehouse automation and last-mile logistics into clear, profitable growth strategies. ",
+          "publisher_name": "mexicofulfillmentexperts.com",
+          "publisher_url": "https://mexicofulfillmentexperts.com/",
+          "category_url": "https://mexicofulfillmentexperts.com/strategic-analysis/",
+          "cta_copy": "Our quarterly reports provide in-depth analysis of specific investment opportunities. Contact us for customized strategic insight.",
+          "wp_scheduled_date": "2026-03-17T07:00:00",
+          "_debug_semana_detectada": "2026-03-16",
+          "_debug_dia_detectado": "martes"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Claude - Query Generator": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Query Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory - Query Generator": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agent - Query Generator",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Agent - Core Data": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Core Data",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone - Agent - Core Data": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent - Core Data",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings - Agent - Core Data": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone - Agent - Core Data",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Agent - Hermanos": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Hermanos",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone - Agent - Hermanos": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent - Hermanos",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings - Agent - Hermanos": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone - Agent - Hermanos",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Agent - Claims Antitesis": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Claims Antitesis",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone - Agent - Claims Antitesis": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent - Claims Antitesis",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings - Agent - Claims Antitesis": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone - Agent - Claims Antitesis",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Escritor": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Escritor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Director de Arte": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Director de Arte",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set - Prepare System Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Prepare System Prompt": {
+      "main": [
+        [
+          {
+            "node": "Agent - Query Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Query Generator": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare RAG Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare RAG Input": {
+      "main": [
+        [
+          {
+            "node": "Agent - Core Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent - Hermanos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent - Claims Antitesis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Core Data": {
+      "main": [
+        [
+          {
+            "node": "Merge - RAG Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Hermanos": {
+      "main": [
+        [
+          {
+            "node": "Merge - RAG Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge - RAG Results": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Writer Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Writer Input": {
+      "main": [
+        [
+          {
+            "node": "Agent - Escritor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Escritor": {
+      "main": [
+        [
+          {
+            "node": "Set - Extract Output & Creds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Extract Output & Creds": {
+      "main": [
+        [
+          {
+            "node": "Agent - Director de Arte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Director de Arte": {
+      "main": [
+        [
+          {
+            "node": "Code - Extract Image Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Extract Image Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Claims Antitesis": {
+      "main": [
+        [
+          {
+            "node": "Merge - RAG Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Agent - Escritor",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate an image": {
+      "main": [
+        [
+          {
+            "node": "Code - Upload Media to WP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Upload Media to WP": {
+      "main": [
+        [
+          {
+            "node": "Code - Create WP Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Create WP Post": {
+      "main": [
+        [
+          {
+            "node": "Code - PATCH RankMath SEO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "05933b65-22ee-4e29-9ddc-8d96fed7df8f",
+  "meta": {
+    "instanceId": "d0396b0a705c4140d22ce1052a4a87ee9e81204ead4c2282c8eb3bae3dd7a301"
+  },
+  "id": "h2C0JaAkaD1Tm9Ac",
+  "tags": [
+    {
+      "updatedAt": "2026-03-16T21:44:06.850Z",
+      "createdAt": "2026-03-16T21:44:06.850Z",
+      "id": "FZzsirT0Fjhw6oYM",
+      "name": "Worker"
+    },
+    {
+      "updatedAt": "2026-03-16T18:04:29.016Z",
+      "createdAt": "2026-03-16T18:04:29.016Z",
+      "id": "QI4HHQ5wxmyHzjpY",
+      "name": "Everest v2.0"
+    }
+  ]
+}
