@@ -1,0 +1,349 @@
+{
+  "name": "WF1 - Everest Dispatcher v4.0",
+  "nodes": [
+    {
+      "id": "d1a00001-sch0-4000-a000-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        250,
+        340
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 6,
+              "triggerAtMinute": 50
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d1a00002-gs01-4000-a000-000000000002",
+      "name": "GSheets - Temas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        520,
+        120
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "mode": "id",
+          "value": "1KetYv6M1WboTutdISMDEEoLTVCTDc1dCKCMwSzXIHwQ"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Temas_Semanales"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REEMPLAZAR_CON_ID_REAL",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "d1a00003-gs02-4000-a000-000000000003",
+      "name": "GSheets - Sitios",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        520,
+        340
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "mode": "id",
+          "value": "1KetYv6M1WboTutdISMDEEoLTVCTDc1dCKCMwSzXIHwQ"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Sitios_Config"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REEMPLAZAR_CON_ID_REAL",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "d1a00004-gs03-4000-a000-000000000004",
+      "name": "GSheets - Perfiles",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        520,
+        560
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "mode": "id",
+          "value": "1KetYv6M1WboTutdISMDEEoLTVCTDc1dCKCMwSzXIHwQ"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Perfiles_Escritores"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REEMPLAZAR_CON_ID_REAL",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "d1a00005-merg-4000-a000-000000000005",
+      "name": "Merge - Sync 3 Sheets",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        800,
+        340
+      ],
+      "parameters": {
+        "mode": "append",
+        "options": {
+          "numberInputs": 3
+        }
+      }
+    },
+    {
+      "id": "d1a00006-code-4000-a000-000000000006",
+      "name": "Code - Cross JOIN & Build Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        340
+      ],
+      "parameters": {
+        "jsCode": "// ============================================================\n// DISPATCHER CODE NODE v4.0\n// Cross-JOIN + Filtro Día + Detección Automática de Semana\n// + RAG Cache forwarding between loop iterations\n// ============================================================\n\nconst temasItems  = $('GSheets - Temas').all();\nconst sitiosItems = $('GSheets - Sitios').all();\nconst perfilesItems = $('GSheets - Perfiles').all();\n\n// ---- 1. Calcular el LUNES de la semana actual ----\nconst now = new Date();\nconst dayOfWeek = now.getDay();\nconst diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;\nconst monday = new Date(now);\nmonday.setDate(now.getDate() + diffToMonday);\nconst mondayISO = monday.toISOString().split('T')[0];\n\n// ---- 2. Normalizar fecha a ISO ----\nfunction normalizeDateToISO(raw) {\n  if (!raw) return '';\n  const str = String(raw).trim();\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(str)) return str.substring(0, 10);\n  if (/^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$/.test(str)) {\n    const [m, d, y] = str.split('/');\n    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;\n  }\n  if (/^\\d{1,2}-\\d{1,2}-\\d{4}$/.test(str)) {\n    const [d, m, y] = str.split('-');\n    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;\n  }\n  if (/^\\d{5}$/.test(str)) {\n    const epoch = new Date(1899, 11, 30);\n    epoch.setDate(epoch.getDate() + parseInt(str));\n    return epoch.toISOString().split('T')[0];\n  }\n  try {\n    const parsed = new Date(str);\n    if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];\n  } catch (e) {}\n  return str;\n}\n\n// ---- 3. Encontrar el tema de ESTA semana ----\nconst tema = temasItems.find(i => {\n  return normalizeDateToISO(i.json.Fecha_Lunes_Referencia) === mondayISO;\n})?.json;\n\nif (!tema) {\n  console.log(`⚠️ No se encontró tema para la semana del ${mondayISO}`);\n  console.log(`   Fechas disponibles: ${temasItems.map(i => i.json.Fecha_Lunes_Referencia).join(', ')}`);\n  return [];\n}\n\n// ---- 4. Detectar el día de HOY ----\nconst hoy = new Date()\n  .toLocaleDateString('es-MX', { weekday: 'long' })\n  .toLowerCase()\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '');\n\nconst fechaHoy = new Date().toISOString().split('T')[0];\n\n// ---- 5. Filtrar sitios activos que publican HOY ----\nconst sitiosHoy = sitiosItems.filter(s => {\n  const diaSitio = (s.json.Dia_Publicacion || '')\n    .toLowerCase()\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '');\n  return diaSitio === hoy && String(s.json.activo).toUpperCase() === 'TRUE';\n});\n\nif (sitiosHoy.length === 0) return [];\n\n// ---- 6. Cross-JOIN → payload (rag_cache starts as null) ----\nreturn sitiosHoy.map(s => {\n  const site = s.json;\n  const perfil = perfilesItems.find(\n    p => p.json.perfil_id === site.perfil_id\n  )?.json || {};\n\n  const idiomaInstruccion = site.idioma === 'es' ? 'español neutro' : 'English';\n\n  let systemPromptFinal = perfil.system_prompt_template || '';\n  const replacements = {\n    '{{AUTHOR_NAME}}':        perfil.author_name || '',\n    '{{AUTHOR_TITLE}}':       perfil.author_title || '',\n    '{{AUTHOR_BIO}}':         perfil.author_bio || '',\n    '{{IDIOMA_INSTRUCCION}}': idiomaInstruccion,\n    '{{PUBLISHER_NAME}}':     site.publisher_name || '',\n    '{{PUBLISHER_URL}}':      site.wp_url || '',\n    '{{CATEGORY_URL}}':       site.category_url || '',\n    '{{CTA_COPY}}':           site.cta_copy || '',\n  };\n  for (const [token, value] of Object.entries(replacements)) {\n    systemPromptFinal = systemPromptFinal.split(token).join(value);\n  }\n\n  return { json: {\n    site_id:              site.site_id,\n    wp_url:               site.wp_url,\n    wp_user:              site.wp_user,\n    wp_app_password:      site.wp_app_password,\n    tema_semanal:         tema.Tema_Principal || '',\n    angulo_enfoque:       tema.Angulo_Enfoque || '',\n    idioma:               site.idioma,\n    system_prompt_final:           systemPromptFinal,\n    art_director_system_prompt:    perfil.art_director_system_prompt || '',\n    author_name:          perfil.author_name || '',\n    author_title:         perfil.author_title || '',\n    author_bio:           perfil.author_bio || '',\n    publisher_name:       site.publisher_name || '',\n    publisher_url:        site.wp_url || '',\n    category_url:         site.category_url || '',\n    cta_copy:             site.cta_copy || '',\n    wp_scheduled_date:    `${fechaHoy}T${site.Hora_Publicacion || '07:00'}:00`,\n    rag_cache:            null,\n    _debug_semana_detectada: mondayISO,\n    _debug_dia_detectado:    hoy,\n  }};\n});\n"
+      }
+    },
+    {
+      "id": "d1a00007-splt-4000-a000-000000000007",
+      "name": "Split in Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1360,
+        340
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "d1a00008-exec-4000-a000-000000000008",
+      "name": "Execute Workflow - Worker",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1640,
+        340
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "={{ /* REEMPLAZAR_CON_ID_DEL_WORKER */ }}",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "d1a00009-code-4000-a000-000000000009",
+      "name": "Code - Forward RAG Cache",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        340
+      ],
+      "parameters": {
+        "jsCode": "// ============================================================\n// FORWARD RAG CACHE — v4.0\n// ============================================================\n// After each Worker execution, this node captures the rag_cache\n// returned by WF2 and injects it into the NEXT item in the\n// Split in Batches queue.\n//\n// HOW IT WORKS:\n// 1. Worker returns { success, post_id, ..., rag_cache: {...} }\n// 2. This node reads that rag_cache\n// 3. Uses n8n's static data to store it between iterations\n// 4. On the next loop, the Cross-JOIN payload already has\n//    rag_cache: null, but the \"Inject Cache\" node will\n//    overwrite it with the stored cache before calling Worker\n// ============================================================\n\nconst workerOutput = $json;\n\n// Store rag_cache in workflow static data (persists across loop iterations)\nconst staticData = $getWorkflowStaticData('global');\n\nif (workerOutput.rag_cache) {\n  staticData.rag_cache = workerOutput.rag_cache;\n}\n\n// Log for debugging\nconst hasCacheNow = !!staticData.rag_cache;\nconsole.log(`[RAG Cache] Site: ${workerOutput.site_id || 'unknown'} | Post: ${workerOutput.post_id || 'N/A'} | Cache stored: ${hasCacheNow}`);\n\n// Pass through the worker result (for logging/monitoring)\nreturn [{ json: {\n  ...workerOutput,\n  _cache_forwarded: hasCacheNow\n}}];\n"
+      }
+    },
+    {
+      "id": "d1a0000a-code-4000-a000-00000000000a",
+      "name": "Code - Inject Cache into Batch Item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        560
+      ],
+      "parameters": {
+        "jsCode": "// ============================================================\n// INJECT RAG CACHE — v4.0\n// ============================================================\n// Runs BEFORE calling the Worker on each batch item.\n// Reads the cached RAG data from static data (stored after\n// the previous Worker call) and injects it into the payload.\n//\n// First iteration: no cache → Worker runs full RAG pipeline\n// Subsequent iterations: cache exists → Worker skips RAG agents\n// ============================================================\n\nconst item = $json;\nconst staticData = $getWorkflowStaticData('global');\n\n// Inject cached RAG data if available\nif (staticData.rag_cache) {\n  item.rag_cache = staticData.rag_cache;\n  console.log(`[RAG Inject] Injecting cache for site: ${item.site_id} (saving ~12K tokens + 3 Pinecone queries)`);\n} else {\n  console.log(`[RAG Inject] No cache yet for site: ${item.site_id} — Worker will run full RAG pipeline`);\n}\n\nreturn [{ json: item }];\n"
+      }
+    },
+    {
+      "id": "d1a0000b-code-4000-a000-00000000000b",
+      "name": "Code - Summary Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        680
+      ],
+      "parameters": {
+        "jsCode": "// ============================================================\n// SUMMARY LOG — v4.0\n// ============================================================\n// Final node: summarizes all published posts and cache status.\n// Clears the static RAG cache for next execution.\n// ============================================================\n\nconst allResults = $input.all();\nconst staticData = $getWorkflowStaticData('global');\n\n// Clear cache for next scheduled run\ndelete staticData.rag_cache;\n\nconst summary = allResults.map(item => {\n  const d = item.json;\n  return {\n    site_id: d.site_id || 'unknown',\n    post_id: d.post_id || 'N/A',\n    post_url: d.post_url || '',\n    success: d.success || false,\n    cache_used: d._cache_forwarded || false\n  };\n});\n\nconst total = summary.length;\nconst succeeded = summary.filter(s => s.success).length;\nconst cached = summary.filter(s => s.cache_used).length;\n\nconsole.log(`\\n═══ DISPATCHER v4.0 SUMMARY ═══`);\nconsole.log(`Total sites: ${total}`);\nconsole.log(`Succeeded: ${succeeded}`);\nconsole.log(`Used RAG cache: ${cached} (saved ~${cached * 12}K Claude tokens)`);\nconsole.log(`═══════════════════════════════\\n`);\n\nreturn [{ json: {\n  dispatcher_version: '4.0',\n  total_sites: total,\n  succeeded: succeeded,\n  cache_hits: cached,\n  estimated_tokens_saved: cached * 12000,\n  details: summary\n}}];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "GSheets - Temas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GSheets - Sitios",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GSheets - Perfiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GSheets - Temas": {
+      "main": [
+        [
+          {
+            "node": "Merge - Sync 3 Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GSheets - Sitios": {
+      "main": [
+        [
+          {
+            "node": "Merge - Sync 3 Sheets",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "GSheets - Perfiles": {
+      "main": [
+        [
+          {
+            "node": "Merge - Sync 3 Sheets",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge - Sync 3 Sheets": {
+      "main": [
+        [
+          {
+            "node": "Code - Cross JOIN & Build Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Cross JOIN & Build Payload": {
+      "main": [
+        [
+          {
+            "node": "Split in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split in Batches": {
+      "main": [
+        [
+          {
+            "node": "Code - Inject Cache into Batch Item",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Summary Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Inject Cache into Batch Item": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow - Worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow - Worker": {
+      "main": [
+        [
+          {
+            "node": "Code - Forward RAG Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Forward RAG Cache": {
+      "main": [
+        [
+          {
+            "node": "Split in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "Everest v2.0"
+    },
+    {
+      "name": "Dispatcher"
+    }
+  ]
+}
