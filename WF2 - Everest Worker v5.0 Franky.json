@@ -634,6 +634,7 @@
     },
     {
       "parameters": {
+        "modelName": "models/gemini-2.5-flash",
         "options": {
           "maxOutputTokens": 8192,
           "temperature": 0.6,
@@ -648,6 +649,7 @@
       ],
       "id": "1d610b5f-29b3-451f-b2dd-ba3f59153940",
       "name": "Google Gemini Chat Model1",
+      "notes": "Model string: si n8n no resuelve 'models/gemini-2.5-flash', probar 'models/gemini-2.5-flash-preview-05-20'.",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
       "credentials": {
@@ -659,6 +661,7 @@
     },
     {
       "parameters": {
+        "modelName": "models/gemini-2.5-flash",
         "options": {
           "maxOutputTokens": 8192,
           "temperature": 0.4,
@@ -684,6 +687,7 @@
     },
     {
       "parameters": {
+        "modelName": "models/gemini-2.5-flash",
         "options": {
           "maxOutputTokens": 8192,
           "temperature": 0.4,
@@ -709,6 +713,7 @@
     },
     {
       "parameters": {
+        "modelName": "models/gemini-2.5-flash",
         "options": {
           "maxOutputTokens": 8192,
           "temperature": 0.4,
@@ -734,6 +739,7 @@
     },
     {
       "parameters": {
+        "modelName": "models/gemini-2.5-flash",
         "options": {
           "maxOutputTokens": 32000,
           "temperature": 0.7,
@@ -805,6 +811,19 @@
       "id": "a880fe6e-1750-4344-8255-b4c0c7b3686b",
       "name": "Wait",
       "webhookId": "a9359216-45d3-47d8-9463-fa74e1a514bc"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code - Prepare Retry Data\n// Recupera writer_input y system_prompt_final originales del nodo Code - Build Writer Input\n// para que el retry loop tenga los datos necesarios para Agent - Escritor\n\nconst originalData = $('Code - Build Writer Input').first().json;\nconst errorInfo = $json.errorMessage || 'Unknown parse error';\n\nreturn [{\n  json: {\n    // Pasar todo lo del Code - Build Writer Input original (incluye rag_cache + trigger)\n    ...originalData,\n    // Reafirmar datos esenciales para Agent - Escritor\n    writer_input: originalData.writer_input,\n    system_prompt_final: originalData.system_prompt_final,\n    // Metadata del retry para debugging\n    _retry: true,\n    _retry_reason: errorInfo,\n    _retry_timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "c0de9e7a-7e72-4c7d-9a1a-7e72c0deb1a0",
+      "name": "Code - Prepare Retry Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        112
+      ]
     }
   ],
   "pinData": {
@@ -1205,7 +1224,7 @@
       "main": [
         [
           {
-            "node": "Wait",
+            "node": "Code - Prepare Retry Data",
             "type": "main",
             "index": 0
           }
@@ -1213,6 +1232,17 @@
         [
           {
             "node": "Set - Extract Output & Creds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare Retry Data": {
+      "main": [
+        [
+          {
+            "node": "Wait",
             "type": "main",
             "index": 0
           }
