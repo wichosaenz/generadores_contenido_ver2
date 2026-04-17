@@ -1,0 +1,1260 @@
+{
+  "name": "WF2 - Everest Worker v5.0 Franky",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ffd147d8-e252-45d4-a4c7-ce0535564c9e",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1344,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sp-passthrough",
+              "name": "system_prompt_final",
+              "value": "={{ $json.system_prompt_final }}",
+              "type": "string"
+            },
+            {
+              "id": "tema-pass",
+              "name": "tema_semanal",
+              "value": "={{ $json.tema_semanal }}",
+              "type": "string"
+            },
+            {
+              "id": "angulo-pass",
+              "name": "angulo_enfoque",
+              "value": "={{ $json.angulo_enfoque }}",
+              "type": "string"
+            },
+            {
+              "id": "idioma-pass",
+              "name": "idioma",
+              "value": "={{ $json.idioma }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "01aeaf9f-2aa8-4f73-86d9-206ad719b31d",
+      "name": "Set - Prepare System Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1104,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Tema: {{ $json.tema_semanal }}\nÁngulo: {{ $json.angulo_enfoque }}\nIdioma: {{ $json.idioma }}",
+        "options": {
+          "systemMessage": "Eres un 'Query Architect AI', experto en destilar temas editoriales \nen texto denso optimizado para búsqueda semántica (RAG) en Pinecone.\n\nTu output alimentará 3 bases de datos vectoriales simultáneamente:\n1. CORE DATA (everest-core-002): Datos sectoriales, análisis \n   geopolíticos, estadísticas macro, casos de infraestructura.\n2. SITIOS HERMANOS (everest-brothers-01): Artículos publicados \n   por los 19 sitios del ecosistema sobre temas relacionados.\n3. ANTÍTESIS (antitesis-research): Claims adversariales, riesgos \n   regulatorios, fracasos documentados, datos que contradicen \n   la tesis optimista.\n\nGENERA este formato exacto (texto plano, sin JSON, sin markdown):\n\nConcepto Central: [1 frase que capture la tesis principal]\n\nPreguntas Core Data:\n- [Pregunta sobre datos macro, métricas o estadísticas del sector]\n- [Pregunta sobre marco regulatorio, política pública o normativa]\n- [Pregunta sobre infraestructura física, inversión o capex]\n- [Pregunta comparativa: cómo se compara esto con otra región, \n   país o caso análogo internacional]\n- [Pregunta prospectiva: proyecciones, tendencias o escenarios \n   2025-2030 relacionados con el tema]\n\nPreguntas Sitios Hermanos:\n- [Pregunta sobre cómo otros sectores del ecosistema abordan \n   este mismo problema o tema]\n- [Pregunta sobre casos de éxito o precedentes publicados \n   en sitios del ecosistema]\n- [Pregunta sobre intersecciones entre este tema y logística, \n   manufactura, movilidad o inversión]\n\nPreguntas Antítesis:\n- [Pregunta sobre riesgos estructurales, fracasos documentados \n   o críticas al modelo]\n- [Pregunta sobre datos que contradigan la tesis principal: \n   tasas de fracaso, costos ocultos, efectos no deseados]\n- [Pregunta sobre obstáculos regulatorios, barreras de entrada \n   o casos donde este enfoque no funcionó]\n\nEntidades y Conceptos: [sustantivos clave, nombres propios, \norganismos, marcos regulatorios, estándares técnicos]\n\nSinónimos y Variaciones: [acrónimos, términos alternativos, \ntraducciones EN↔ES si aplica]\n\nContexto Geográfico: [países, regiones, corredores específicos \nmencionados o implícitos en el tema]\n\nHorizonte Temporal: [períodos históricos relevantes y ventana \nprospectiva aplicable al tema]\n\nREGLAS:\n- Texto plano sin formato. Solo encabezados seguidos de dos puntos.\n- Sin introducciones ni despedidas.\n- Las preguntas deben ser semánticamente distintas entre sí — \n  sin solapamiento temático.\n- Maximiza densidad de entidades nombradas: personas, \n  organizaciones, lugares, cifras y fechas específicas \n  aportan más al retrieval vectorial que términos genéricos.\n- Las preguntas Antítesis deben ser genuinamente adversariales, \n  no matices del argumento principal.\n- Horizonte Temporal orienta el filtro cronológico del retriever; \n  sé específico."
+        }
+      },
+      "id": "93b0b555-a1ea-4e5b-87a6-a3cc8cd00391",
+      "name": "Agent - Query Generator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -896,
+        464
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "querygen_session"
+      },
+      "id": "9a4130de-590c-4b20-9f60-a355f055c32a",
+      "name": "Memory - Query Generator",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -752,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare enriched query + site context for the 3 RAG agents\nconst queryGenOutput = $json.output || $json.text || '';\nconst trigger = $('Execute Workflow Trigger').first().json;\n\n// Build a context-enriched query that helps RAG agents\n// prioritize results relevant to this specific site's profile\nconst enrichedWithContext = [\n  queryGenOutput,\n  '',\n  `--- CONTEXTO DEL SITIO ---`,\n  `Idioma del artículo: ${trigger.idioma === 'es' ? 'Español' : 'English'}`,\n  `Autor: ${trigger.author_name || 'N/A'}`,\n  `Ángulo editorial: ${trigger.angulo_enfoque || 'N/A'}`,\n].join('\\n');\n\nreturn [{\n  json: {\n    enriched_query: enrichedWithContext,\n    tema_semanal: trigger.tema_semanal,\n    angulo_enfoque: trigger.angulo_enfoque,\n    idioma: trigger.idioma,\n    site_id: trigger.site_id,\n    author_name: trigger.author_name || '',\n  }\n}];"
+      },
+      "id": "6831aa4a-a99b-4de2-9e8b-8180e77acf54",
+      "name": "Code - Prepare RAG Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.enriched_query }}",
+        "options": {
+          "systemMessage": "Eres un investigador de datos experto. Tu misión es buscar en la base de conocimiento técnica y extraer hechos clave relevantes al tema proporcionado.\n\nINSTRUCCIONES:\n1. Usa la herramienta de búsqueda para consultar la base de datos con el query proporcionado.\n2. Extrae los hechos más relevantes con sus fuentes.\n3. Devuelve EXCLUSIVAMENTE un JSON válido con esta estructura:\n\n{\n  \"hechos_clave_extraidos\": [\n    {\n      \"idea_principal\": \"El concepto o afirmación central.\",\n      \"desarrollo_contextual\": \"2-4 frases de contexto con datos.\",\n      \"referencia_externa\": {\n        \"texto_citado\": \"Frase exacta del documento fuente.\",\n        \"url\": \"https://www.fuente-externa.com/articulo\"\n      }\n    }\n  ]\n}\n\nREGLAS:\n- Mínimo 3, máximo 8 hechos.\n- Cada hecho DEBE tener referencia externa con URL si está disponible.\n- Si no hay resultados relevantes, devuelve el JSON con array vacío.\n- NO incluyas texto fuera del JSON.",
+          "maxIterations": 7,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "aa24abb3-1b7e-4948-9375-7660ddde6156",
+      "name": "Agent - Core Data",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -64,
+        -16
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "__default__",
+        "toolDescription": "Busca en la base de conocimiento técnica principal (datos sectoriales, análisis geopolíticos, estadísticas de industria, contexto macroeconómico). Usa esta herramienta para obtener hechos verificados y referencias externas.",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "everest-core-002",
+          "mode": "list",
+          "cachedResultName": "everest-core-002"
+        },
+        "options": {}
+      },
+      "id": "0151a715-4cd3-44a4-b05e-4a80b0c2ffa1",
+      "name": "Pinecone - Agent - Core Data",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1,
+      "position": [
+        16,
+        224
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "LRUT6DMRCj0XvrnD",
+          "name": "PineconeApi GreenBelly"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "ed6e8de9-8f87-4a60-87a5-8c7f792b9aeb",
+      "name": "Embeddings - Agent - Core Data",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        480
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "TBuwdJL44UD7i8fW",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.enriched_query }}",
+        "options": {
+          "systemMessage": "Eres un especialista en interlinking editorial. Tu misión es buscar artículos publicados por los sitios hermanos del ecosistema y extraer los más relevantes para generar enlaces internos.\n\nINSTRUCCIONES:\n1. Usa la herramienta de búsqueda con el query proporcionado.\n2. Identifica artículos hermanos que complementen el tema actual.\n3. Devuelve EXCLUSIVAMENTE un JSON válido:\n\n{\n  \"articulos_hermanos_relevantes\": [\n    {\n      \"titulo\": \"Título exacto del artículo hermano\",\n      \"url\": \"https://sitio-hermano.com/slug-articulo/\",\n      \"autor\": \"Nombre del autor\",\n      \"cita_directa\": \"Frase textual más impactante del artículo\",\n      \"dato_clave\": \"Estadística o ejemplo más concreto mencionado\"\n    }\n  ]\n}\n\nREGLAS:\n- Mínimo 3, máximo 6 artículos hermanos.\n- Las URLs deben ser exactas (copiadas del índice).\n- Prioriza artículos con datos duros y estadísticas.\n- NO incluyas texto fuera del JSON.",
+          "maxIterations": 8,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "92fc9005-4eba-4582-9625-d4e613e31352",
+      "name": "Agent - Hermanos",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -112,
+        672
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "todo",
+        "toolDescription": "Busca en el índice de artículos publicados por los 19 sitios hermanos del ecosistema. Devuelve títulos, URLs, autores y citas directas para generar interlinks editoriales de alta calidad.",
+        "pineconeIndex": "everest-brothers-01",
+        "options": {
+          "pineconeNamespace": "todo"
+        }
+      },
+      "id": "f84b7963-80a9-4412-8d80-a4495c426ed0",
+      "name": "Pinecone - Agent - Hermanos",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        944
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "LRUT6DMRCj0XvrnD",
+          "name": "PineconeApi GreenBelly"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "ed7d1c49-fd1a-4601-9d88-a56125b1e8d5",
+      "name": "Embeddings - Agent - Hermanos",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        1152
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "TBuwdJL44UD7i8fW",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.enriched_query }}",
+        "options": {
+          "systemMessage": "Eres un auditor de la realidad. Tu misión es buscar claims adversariales, riesgos regulatorios y datos que desafíen la tesis optimista del tema proporcionado.\n\nINSTRUCCIONES:\n1. Usa la herramienta de búsqueda para encontrar datos contradictorios y riesgos.\n2. Solo incluye claims con score >= 80 y fuente verificada.\n3. Devuelve EXCLUSIVAMENTE un JSON válido:\n\n{\n  \"claims_antitesis\": [\n    {\n      \"source_id\": \"ID del chunk en Pinecone\",\n      \"score\": 92,\n      \"fuente\": \"Nombre de la institución\",\n      \"tesis_central\": \"El argumento duro\",\n      \"evidencia_clave\": [\"(STATISTIC) dato 1\", \"(LEGAL) dato 2\"],\n      \"implicaciones_negocio\": { \"riesgos\": [\"riesgo 1\", \"riesgo 2\"] },\n      \"relevancia_para_articulo\": \"Por qué refuta la tesis optimista\"\n    }\n  ],\n  \"metadata_busqueda\": {\n    \"total_claims_validos\": 3,\n    \"filtro_aplicado\": \"Score >= 70 + Verified Source\"\n  }\n}\n\nREGLAS:\n- Solo claims con score >= 80.\n- La fuente DEBE ser una institución verificable (gobierno, academia, organismo internacional).\n- Si no hay claims válidos, devuelve arrays vacíos con metadata explicando por qué.\n- NO incluyas texto fuera del JSON.",
+          "maxIterations": 12,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "38338301-59bc-4093-aab6-40366ce29af4",
+      "name": "Agent - Claims Antitesis",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -128,
+        1312
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "todo",
+        "toolDescription": "Busca en la base de datos de claims adversariales y riesgos regulatorios. Contiene datos duros de fuentes gubernamentales, académicas e internacionales que desafían narrativas optimistas. Filtra por score de relevancia y verificabilidad de la fuente.",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "antitesis-research",
+          "mode": "list",
+          "cachedResultName": "antitesis-research"
+        },
+        "options": {}
+      },
+      "id": "5eed0c47-66ac-4f30-97ca-9dedbae33138",
+      "name": "Pinecone - Agent - Claims Antitesis",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        1568
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "LRUT6DMRCj0XvrnD",
+          "name": "PineconeApi GreenBelly"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "1b4ee4b0-453e-47b2-9927-bd7d039deef6",
+      "name": "Embeddings - Agent - Claims Antitesis",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        16,
+        1728
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "TBuwdJL44UD7i8fW",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "id": "4d321367-9de1-4740-9b39-73ad1ee8755c",
+      "name": "Merge - RAG Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        368,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consolidate 3 RAG outputs + original payload into Writer input\n// v6.0: Enhanced with site context and structured RAG section headers\nconst ragItems = $input.all();\nconst trigger = $('Execute Workflow Trigger').first().json;\n\n// Extract agent outputs (each returns JSON in .output or .text)\nconst coreData = ragItems[0]?.json?.output || ragItems[0]?.json?.text || '{\"hechos_clave_extraidos\":[]}';\nconst hermanos = ragItems[1]?.json?.output || ragItems[1]?.json?.text || '{\"articulos_hermanos_relevantes\":[]}';\nconst claims   = ragItems[2]?.json?.output || ragItems[2]?.json?.text || '{\"claims_antitesis\":[],\"metadata_busqueda\":{}}';\n\n// Build comprehensive writer input with structured context\nconst writerInput = `\n═══════════════════════════════════════════════\nTEMA SEMANAL: ${trigger.tema_semanal}\nÁNGULO DE ENFOQUE: ${trigger.angulo_enfoque}\nIDIOMA DEL ARTÍCULO: ${trigger.idioma === 'es' ? 'Español neutro' : 'English'}\nSITIO: ${trigger.publisher_name} (${trigger.wp_url})\nAUTOR: ${trigger.author_name || 'N/A'}\nFECHA PUBLICACIÓN: ${trigger.wp_scheduled_date || 'N/A'}\n═══════════════════════════════════════════════\n\n<rag_context>\n\n<section id=\"core_data\" source=\"everest-core-002\">\n${coreData}\n</section>\n\n<section id=\"hermanos\" source=\"everest-brothers-01\">\n${hermanos}\n</section>\n\n<section id=\"antitesis\" source=\"antitesis-research\">\n${claims}\n</section>\n\n</rag_context>\n\n═══════════════════════════════════════════════\nINSTRUCCIÓN FINAL:\nUsando TODA la información dentro de <rag_context> como tu contexto verificado, genera el artículo completo en formato JSON según las instrucciones de tu System Prompt.\n\nREQUISITOS MÍNIMOS DE INTEGRACIÓN:\n- Mínimo 3 interlinks de la sección hermanos (usar URLs exactas del contexto).\n- Mínimo 1 bloque de análisis de riesgo usando datos de la sección antitesis.\n- Cada dato estadístico DEBE tener respaldo en core_data o antitesis.\n- Si un dato no tiene respaldo en el contexto RAG, marcarlo como [DATO NO DISPONIBLE EN CONTEXTO].\n═══════════════════════════════════════════════\n`.trim();\n\nreturn [{\n  json: {\n    writer_input: writerInput,\n    rag_cache: {\n      core_data: coreData,\n      hermanos: hermanos,\n      claims: claims\n    },\n    ...trigger\n  }\n}];"
+      },
+      "id": "b0a0ae95-611e-424e-9842-240f2d305c98",
+      "name": "Code - Build Writer Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.writer_input }}",
+        "options": {
+          "systemMessage": "={{ $json.system_prompt_final }}",
+          "maxIterations": 1
+        }
+      },
+      "id": "6bc18fa5-10db-410f-9fda-36491663c12a",
+      "name": "Agent - Escritor",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        704,
+        464
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "titulo",
+              "name": "titulo_generado",
+              "value": "={{ $json.titulo_generado || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "cuerpo",
+              "name": "cuerpo_articulo_html",
+              "value": "={{ $json.cuerpo_articulo_html || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "slug",
+              "name": "slug_generado",
+              "value": "={{ $json.slug_generado || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "seo-title",
+              "name": "titulo_seo_generado",
+              "value": "={{ $json.meta_descripcion_generada || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "meta-desc",
+              "name": "meta_descripcion_generada",
+              "value": "={{ $json.output?.meta_descripcion_generada || $json.meta_descripcion_generada || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "tags",
+              "name": "tags_sugeridos_array",
+              "value": "={{ $json.tags_sugeridos_array || [] }}",
+              "type": "string"
+            },
+            {
+              "id": "faq",
+              "name": "preguntas_frecuentes_array",
+              "value": "={{ $json.preguntas_frecuentes_array || [] }}",
+              "type": "string"
+            },
+            {
+              "id": "wp-url",
+              "name": "wp_url",
+              "value": "={{ $('Execute Workflow Trigger').first().json.wp_url }}",
+              "type": "string"
+            },
+            {
+              "id": "wp-user",
+              "name": "wp_user",
+              "value": "={{ $('Execute Workflow Trigger').first().json.wp_user }}",
+              "type": "string"
+            },
+            {
+              "id": "wp-pass",
+              "name": "wp_app_password",
+              "value": "={{ $('Execute Workflow Trigger').first().json.wp_app_password }}",
+              "type": "string"
+            },
+            {
+              "id": "wp-date",
+              "name": "wp_scheduled_date",
+              "value": "={{ $('Execute Workflow Trigger').first().json.wp_scheduled_date }}",
+              "type": "string"
+            },
+            {
+              "id": "site-id",
+              "name": "site_id",
+              "value": "={{ $('Execute Workflow Trigger').first().json.site_id }}",
+              "type": "string"
+            },
+            {
+              "id": "art-director-prompt",
+              "name": "art_director_system_prompt",
+              "value": "={{ $('Execute Workflow Trigger').first().json.art_director_system_prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "author-name",
+              "name": "author_name",
+              "value": "={{ $('Execute Workflow Trigger').first().json.author_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8fbd2d2d-0c5d-453a-94c8-139277de08ca",
+      "name": "Set - Extract Output & Creds",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1168,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "=## BRIEF CREATIVO PARA IMAGEN DE PORTADA\n\n**ARTÍCULO A ILUSTRAR:**\n- Título: {{ $json.titulo_generado }}\n- Descripción SEO: {{ $json.meta_descripcion_generada }}\n- Tags temáticos: {{ $json.tags_sugeridos_array }}\n- Idioma del artículo: {{ $('Execute Workflow Trigger').first().json.idioma }}\n- Industria/Nicho: {{ $('Execute Workflow Trigger').first().json.angulo_enfoque }}\n\n**TU MISIÓN:**\n1. Lee el título y la descripción para entender la EMOCIÓN y el CONCEPTO CENTRAL del artículo.\n2. Traduce ese concepto en una METÁFORA VISUAL evocadora (no literal).\n3. Compón una escena contemplativa que transmita la esencia del tema sin usar texto, logos, ni palabras.\n4. Aplica el estilo visual definido en tu System Prompt (tu identidad artística).\n5. Genera el prompt final combinando: escena + estilo + aspect ratio 16:9.\n\n**REGLAS ABSOLUTAS:**\n- NUNCA incluyas texto, letras, números, logos, watermarks ni palabras escritas en la escena.\n- La escena debe ser METAFÓRICA, no una representación literal del tema.\n- El prompt final SIEMPRE debe estar en inglés, independientemente del idioma del artículo.\n- Responde ÚNICAMENTE con un JSON válido, sin markdown ni texto adicional.\n\n**FORMATO DE SALIDA (JSON estricto):**\n{\n  \"scene_description\": \"A contemplative scene in English describing the visual metaphor...\",\n  \"style_keywords\": \"Your artistic style keywords from your identity...\",\n  \"aspect_ratio\": \"aspect ratio 16:9\",\n  \"final_prompt\": \"scene_description + style_keywords + aspect_ratio combined\"\n}",
+        "options": {
+          "systemMessage": "={{ $json.art_director_system_prompt }}",
+          "maxIterations": 2,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "4c1b58a2-ec7f-4757-88b4-f595bfb0bb3c",
+      "name": "Agent - Director de Arte",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1344,
+        464
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {
+          "frequencyPenalty": 0.6,
+          "maxTokens": 2048,
+          "presencePenalty": 0.4,
+          "temperature": 1.1,
+          "topP": 0.9
+        }
+      },
+      "id": "6b592a26-f7ee-4a2d-a996-554fa00eaf05",
+      "name": "OpenAI - Director de Arte",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        720
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "TBuwdJL44UD7i8fW",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Director de Arte output and prepare prompt for native Gemini Image node\nconst directorOutput = $json.output || $json.text || '{}';\nconst prev = $('Set - Extract Output & Creds').first().json;\n\nlet parsed;\ntry {\n  // Try to parse as JSON (Director should return JSON)\n  const cleanText = directorOutput\n    .replace(/```json\\n?/g, '')\n    .replace(/```\\n?/g, '')\n    .trim();\n  parsed = JSON.parse(cleanText);\n} catch (e) {\n  // Fallback: use the raw text as the prompt\n  parsed = {\n    final_prompt: directorOutput.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim()\n  };\n}\n\n// Build the final prompt — prioritize final_prompt, then compose from parts\nconst finalPrompt = parsed.final_prompt \n  || [\n    parsed.scene_description || '',\n    parsed.style_keywords || '',\n    parsed.aspect_ratio || 'aspect ratio 16:9'\n  ].filter(Boolean).join(', ');\n\nif (!finalPrompt || finalPrompt.length < 10) {\n  throw new Error('Director de Arte no generó un prompt válido. Output recibido: ' + directorOutput.substring(0, 200));\n}\n\n// Output: the Gemini native node reads $json.image_prompt\nreturn [{\n  json: {\n    image_prompt: finalPrompt,\n    // Pass through all article + WP data for downstream nodes\n    ...prev\n  }\n}];"
+      },
+      "id": "85ca7386-ca87-4e38-9be1-633558966256",
+      "name": "Code - Extract Image Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "modelId": {
+          "__rl": true,
+          "value": "models/imagen-4.0-generate-001",
+          "mode": "list",
+          "cachedResultName": "models/imagen-4.0-generate-001"
+        },
+        "prompt": "={{ $json.image_prompt }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1904,
+        464
+      ],
+      "id": "36dad277-8739-4e93-bf0f-d2010808b0ed",
+      "name": "Generate an image",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1CzKCoveMaLPbncg",
+          "name": "Everest Gemini(PaLM)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ═══ Create WordPress Post (Two-Step: Draft → Publish) ═══\n// Step 1: Create as DRAFT (wp_insert_post fires)\n// Step 2: Update to PUBLISH (edit_post + transition_post_status fires → Breeze purges cache)\n\nconst uploadResult = $json;\nconst creds = $('Execute Workflow Trigger').first().json;\nconst articleData = $('Set - Extract Output & Creds').first().json;\n\nconst wpUrl = creds.wp_url.replace(/\\/$/, '');\nconst authHeader = 'Basic ' + Buffer.from(creds.wp_user + ':' + creds.wp_app_password).toString('base64');\n\n// --- Parse tags ---\nlet tags = articleData.tags_sugeridos_array;\nif (typeof tags === 'string') {\n  try { tags = JSON.parse(tags); } catch(e) { tags = []; }\n}\n\n// --- Content with JSON-LD intact ---\nconst cleanContent = (articleData.cuerpo_articulo_html || '').trim();\n\n// ═══ STEP 1: Create as DRAFT ═══\nconst draftBody = {\n  title: articleData.titulo_generado,\n  content: cleanContent,\n  slug: articleData.slug_generado,\n  status: 'draft',\n  featured_media: uploadResult.media_id || 0\n};\n\nlet postId;\ntry {\n  const draftResponse = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${wpUrl}/wp-json/wp/v2/posts`,\n    headers: {\n      'Content-Type': 'application/json',\n      'Authorization': authHeader\n    },\n    body: draftBody,\n    returnFullResponse: false\n  });\n\n  postId = draftResponse.id || null;\n  if (!postId) {\n    throw new Error('WP draft response has no ID: ' + JSON.stringify(draftResponse).substring(0, 300));\n  }\n} catch (error) {\n  throw new Error(`WordPress DRAFT creation failed for ${creds.site_id}: ${error.message}`);\n}\n\n// ═══ STEP 2: Update to PUBLISH ═══\n// This PUT triggers edit_post + post_updated + transition_post_status('draft' → 'publish')\n// which is what Breeze hooks into for automatic cache purge\nlet postUrl;\ntry {\n  const publishResponse = await this.helpers.httpRequest({\n    method: 'PUT',\n    url: `${wpUrl}/wp-json/wp/v2/posts/${postId}`,\n    headers: {\n      'Content-Type': 'application/json',\n      'Authorization': authHeader\n    },\n    body: {\n      status: 'publish'\n    },\n    returnFullResponse: false\n  });\n\n  postUrl = publishResponse.link || '';\n\n} catch (error) {\n  throw new Error(`WordPress PUBLISH update failed for ${creds.site_id} (post ${postId}): ${error.message}`);\n}\n\nreturn [{\n  json: {\n    post_id: postId,\n    post_url: postUrl,\n    media_id: uploadResult.media_id,\n    titulo_seo: articleData.titulo_seo_generado,\n    meta_descripcion: articleData.meta_descripcion_generada,\n    tags_array: tags,\n    preguntas_frecuentes: articleData.preguntas_frecuentes_array,\n    site_id: creds.site_id\n  }\n}];"
+      },
+      "id": "497c35ad-b05e-4267-ad4e-8dfd5b482135",
+      "name": "Code - Create WP Post",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ═══ Prepare Image Binary for WP Upload ═══\n// v6 FINAL — Registers binary via prepareBinaryData (efficient streaming, no CPU spike)\n// Pre-computes WP auth header (Buffer not available in HTTP Request node expressions)\n// Actual upload happens in the NEXT node (native HTTP Request)\n\nconst items = $input.all();\nconst item  = items[0];\n\n// All data comes from Set - Extract Output & Creds\nconst prev = $('Set - Extract Output & Creds').first().json;\nconst slug    = prev.slug_generado || 'featured';\nconst siteId  = prev.site_id || 'everest';\nconst filename = `${siteId}-${slug}-${Date.now()}.png`;\n\n// ── 1. Get the raw image buffer ──\nlet imageBuffer;\ntry {\n  imageBuffer = await this.helpers.getBinaryDataBuffer(0, 'data');\n} catch (bufErr) {\n  if (item.binary && item.binary.data && item.binary.data.data) {\n    imageBuffer = Buffer.from(item.binary.data.data, 'base64');\n  } else {\n    throw new Error('No binary data available: ' + bufErr.message);\n  }\n}\n\nif (!imageBuffer || imageBuffer.length === 0) {\n  throw new Error('Image buffer is empty — Gemini may not have returned an image.');\n}\n\n// ── 2. Register in n8n's binary system (efficient streaming, no CPU spike) ──\nconst binaryData = await this.helpers.prepareBinaryData(\n  imageBuffer,\n  filename,\n  'image/png'\n);\n\n// ── 3. Pre-compute WP auth header (Buffer is NOT available in HTTP Request node expressions) ──\nconst wpAuthHeader = 'Basic ' + Buffer.from(\n  String(prev.wp_user).trim() + ':' + String(prev.wp_app_password).trim()\n).toString('base64');\n\n// ── 4. Pass EVERYTHING forward for downstream nodes ──\nreturn [{\n  json: {\n    // Upload metadata\n    filename: filename,\n    buffer_size_kb: Math.round(imageBuffer.length / 1024),\n\n    // WP credentials (raw + pre-computed auth)\n    wp_url: prev.wp_url,\n    wp_user: prev.wp_user,\n    wp_app_password: prev.wp_app_password,\n    wp_auth_header: wpAuthHeader,\n    site_id: prev.site_id,\n\n    // Article data passthrough for Create Post + RankMath downstream\n    titulo_generado: prev.titulo_generado,\n    slug_generado: prev.slug_generado,\n    cuerpo_articulo_html: prev.cuerpo_articulo_html,\n    titulo_seo_generado: prev.titulo_seo_generado,\n    meta_descripcion_generada: prev.meta_descripcion_generada,\n    tags_sugeridos_array: prev.tags_sugeridos_array,\n    preguntas_frecuentes_array: prev.preguntas_frecuentes_array,\n    wp_scheduled_date: prev.wp_scheduled_date,\n    author_name: prev.author_name\n  },\n  binary: {\n    data: binaryData\n  }\n}];"
+      },
+      "id": "dc238067-66f8-4d39-ad09-de77e0bb9c46",
+      "name": "Prepare Binary for Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2096,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.wp_url.replace(/\\/$/, '') }}/wp-json/wp/v2/media",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.wp_auth_header }}"
+            },
+            {
+              "name": "Content-Disposition",
+              "value": "=attachment; filename=\"{{ $json.filename }}\""
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2272,
+        464
+      ],
+      "id": "a79c766c-6dc1-4648-b8c4-4417afedd756",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ═══ Bridge: Normalize WP Upload Response ═══\n// WordPress returns { id, source_url, ... } from the HTTP Request node\n// Downstream expects { media_id, media_url, filename, buffer_size_kb }\n\nconst wpResponse = $json;\n\nreturn [{\n  json: {\n    media_id: wpResponse.id || null,\n    media_url: wpResponse.source_url || '',\n    filename: wpResponse.title?.rendered || wpResponse.slug || '',\n    buffer_size_kb: 0\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        464
+      ],
+      "id": "92b7e168-0b08-4837-a501-c63a08e87b35",
+      "name": "Bridge Upload Result"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Code - Parse Writer Output v3.1\n// 1. Parses JSON from Agent - Escritor (with 2-level recovery)\n// 2. Builds SEO JSON-LD (Article + FAQPage + ClaimReview)\n// 3. Appends <script type=\"application/ld+json\"> to HTML body\n// ============================================================\n\nconst items = $input.all();\nconst item = items[0];\nconst raw = item.json.output || item.json.text || '';\n\nif (!raw || typeof raw !== 'string') {\n  throw new Error(\n    'Writer output is empty or not a string. ' +\n    'Type: ' + typeof raw + ' | Keys: ' + Object.keys(item.json).join(', ')\n  );\n}\n\n// ═══════════════════════════════════════════\n// PHASE 1: Parse Writer JSON\n// ═══════════════════════════════════════════\n\nlet cleaned = raw\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/\\s*```$/i, '')\n  .trim();\n\nconst firstBrace = cleaned.indexOf('{');\nconst lastBrace  = cleaned.lastIndexOf('}');\n\nif (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {\n  throw new Error(\n    'Writer output does not contain a valid JSON object. ' +\n    'First 500 chars: ' + raw.substring(0, 500)\n  );\n}\n\ncleaned = cleaned.substring(firstBrace, lastBrace + 1);\n\nlet parsed;\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  // ═══ Recovery Level 1: Fix unescaped newlines/tabs inside JSON string values ═══\n  // Walk character-by-character: when inside a quoted string, replace literal\n  // newlines/tabs with their escaped equivalents.\n  // Handles Hershey's-style apostrophes, long HTML with line breaks, etc.\n  try {\n    let inString = false;\n    let escaped = false;\n    let fixed = '';\n    for (let i = 0; i < cleaned.length; i++) {\n      const ch = cleaned[i];\n      if (escaped) {\n        fixed += ch;\n        escaped = false;\n        continue;\n      }\n      if (ch === '\\\\') {\n        fixed += ch;\n        escaped = true;\n        continue;\n      }\n      if (ch === '\"') {\n        inString = !inString;\n        fixed += ch;\n        continue;\n      }\n      if (inString) {\n        if (ch === '\\n') { fixed += '\\\\n'; continue; }\n        if (ch === '\\r') { fixed += '\\\\r'; continue; }\n        if (ch === '\\t') { fixed += '\\\\t'; continue; }\n      }\n      fixed += ch;\n    }\n    parsed = JSON.parse(fixed);\n  } catch (e2) {\n    // ═══ Recovery Level 2: Truncation repair ═══\n    // If Gemini output was cut mid-string, try to close the JSON gracefully\n    try {\n      let truncated = cleaned;\n      // Close any open string\n      const quoteCount = (truncated.match(/(?<!\\\\)\"/g) || []).length;\n      if (quoteCount % 2 !== 0) truncated += '\"';\n      // Close open braces/brackets\n      const openBraces = (truncated.match(/{/g) || []).length;\n      const closeBraces = (truncated.match(/}/g) || []).length;\n      const openBrackets = (truncated.match(/\\[/g) || []).length;\n      const closeBrackets = (truncated.match(/\\]/g) || []).length;\n      for (let b = 0; b < openBrackets - closeBrackets; b++) truncated += ']';\n      for (let b = 0; b < openBraces - closeBraces; b++) truncated += '}';\n      parsed = JSON.parse(truncated);\n    } catch (e3) {\n      throw new Error(\n        'JSON parse failed after 2 recovery attempts: ' + e.message +\n        ' | Near position: ' + (e.message.match(/position (\\d+)/) || ['','?'])[1] +\n        ' | First 300 chars: ' + cleaned.substring(0, 300)\n      );\n    }\n  }\n}\n\nconst required = [\n  'titulo_generado',\n  'cuerpo_articulo_html',\n  'slug_generado',\n  'titulo_seo_generado',\n  'meta_descripcion_generada',\n  'tags_sugeridos_array',\n  'preguntas_frecuentes_array'\n];\n\nconst missing = required.filter(f => !parsed[f]);\nif (missing.length > 0) {\n  throw new Error('Writer output missing required fields: ' + missing.join(', '));\n}\n\n// ═══════════════════════════════════════════\n// PHASE 2: Build JSON-LD Schemas\n// ═══════════════════════════════════════════\n\nconst trigger = $('Execute Workflow Trigger').first().json;\n\n// --- Helper: safe array parse ---\nfunction safeArray(val) {\n  if (Array.isArray(val)) return val;\n  if (typeof val === 'string') {\n    try { return JSON.parse(val); } catch(e) { return []; }\n  }\n  return [];\n}\n\n// --- Helper: extract date portion from ISO string ---\nfunction extractDate(dateStr) {\n  if (!dateStr) return new Date().toISOString().split('T')[0];\n  return String(dateStr).split('T')[0];\n}\n\nconst pubDate = extractDate(trigger.wp_scheduled_date);\nconst tags = safeArray(parsed.tags_sugeridos_array);\nconst faq  = safeArray(parsed.preguntas_frecuentes_array);\n\n// ── 2a. Article Schema ──\nconst articleSchema = {\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"Article\",\n  \"headline\": parsed.titulo_generado,\n  \"description\": parsed.meta_descripcion_generada,\n  \"author\": {\n    \"@type\": \"Person\",\n    \"name\": trigger.author_name || 'Staff Writer'\n  },\n  \"publisher\": {\n    \"@type\": \"Organization\",\n    \"name\": trigger.publisher_name || ''\n  },\n  \"datePublished\": pubDate,\n  \"dateModified\": pubDate\n};\n\n// Enrich author if we have jobTitle and bio\nif (trigger.author_title) {\n  articleSchema.author.jobTitle = trigger.author_title;\n}\nif (trigger.author_bio) {\n  articleSchema.author.description = trigger.author_bio;\n}\n\n// Enrich author.alumniOf if available (JSON array string from Sheets)\nif (trigger.author_alumni_json) {\n  try {\n    const alumni = JSON.parse(trigger.author_alumni_json);\n    if (Array.isArray(alumni) && alumni.length > 0) {\n      articleSchema.author.alumniOf = alumni.map(org => ({\n        \"@type\": \"Organization\",\n        \"name\": typeof org === 'string' ? org : org.name\n      }));\n    }\n  } catch(e) { /* skip malformed alumni */ }\n}\n\n// Enrich publisher.logo if available\nif (trigger.publisher_logo_url) {\n  articleSchema.publisher.logo = {\n    \"@type\": \"ImageObject\",\n    \"url\": trigger.publisher_logo_url\n  };\n}\n\n// Keywords as DefinedTerm (first 2 = primary, next 2 = contextual, rest = semantic)\nif (tags.length > 0) {\n  articleSchema.keywords = tags.map((tag, i) => ({\n    \"@type\": \"DefinedTerm\",\n    \"name\": typeof tag === 'string' ? tag : (tag.name || tag),\n    \"category\": i < 2 ? \"primary\" : (i < 4 ? \"contextual\" : \"semantic\")\n  }));\n}\n\n// ── 2b. FAQPage Schema ──\nlet faqSchema = null;\nif (faq.length > 0) {\n  faqSchema = {\n    \"@context\": \"https://schema.org\",\n    \"@type\": \"FAQPage\",\n    \"mainEntity\": faq.map(item => ({\n      \"@type\": \"Question\",\n      \"name\": item.pregunta || item.question || item.q || item.name || '',\n      \"acceptedAnswer\": {\n        \"@type\": \"Answer\",\n        \"text\": item.respuesta || item.answer || item.a || item.text || ''\n      }\n    })).filter(q => q.name && q.acceptedAnswer.text)\n  };\n  // Only include if we have valid Q&A pairs\n  if (faqSchema.mainEntity.length === 0) faqSchema = null;\n}\n\n// ── 2c. ClaimReview Schema (from antitesis RAG data) ──\nlet claimSchema = null;\ntry {\n  const ragCache = $('Code - Build Writer Input').first()?.json?.rag_cache;\n  if (ragCache && ragCache.claims) {\n    let claimsData = ragCache.claims;\n    if (typeof claimsData === 'string') {\n      claimsData = JSON.parse(claimsData);\n    }\n\n    // Extract the strongest claim (highest confidence score)\n    const claimsArray = claimsData.claims_antitesis || claimsData.claims || [];\n    if (Array.isArray(claimsArray) && claimsArray.length > 0) {\n      // Pick the claim with highest score, or first one\n      const topClaim = claimsArray.reduce((best, curr) => {\n        const currScore = curr.confidence_score || curr.score || curr.relevance || 0;\n        const bestScore = best.confidence_score || best.score || best.relevance || 0;\n        return currScore > bestScore ? curr : best;\n      }, claimsArray[0]);\n\n      const claimText = topClaim.claim || topClaim.afirmacion || topClaim.text || '';\n      const sourceOrg = topClaim.source || topClaim.fuente || topClaim.organization || '';\n      const score = topClaim.confidence_score || topClaim.score || topClaim.relevance || 0;\n\n      if (claimText) {\n        // Map confidence score (0-1 or 0-100) to rating (1-5)\n        const normalizedScore = score > 1 ? score / 100 : score;\n        const ratingValue = Math.max(1, Math.min(5, Math.round(normalizedScore * 5)));\n\n        claimSchema = {\n          \"@context\": \"https://schema.org\",\n          \"@type\": \"ClaimReview\",\n          \"claimReviewed\": claimText,\n          \"reviewRating\": {\n            \"@type\": \"Rating\",\n            \"ratingValue\": String(ratingValue),\n            \"bestRating\": \"5\",\n            \"ratingExplanation\": topClaim.analysis || topClaim.analisis ||\n              topClaim.counter_argument || topClaim.contraargumento || ''\n          },\n          \"itemReviewed\": {\n            \"@type\": \"Claim\",\n            \"author\": {\n              \"@type\": \"Organization\",\n              \"name\": typeof sourceOrg === 'string' ? sourceOrg : (sourceOrg.name || 'Source')\n            }\n          },\n          \"author\": {\n            \"@type\": \"Person\",\n            \"name\": trigger.author_name || 'Staff Writer'\n          }\n        };\n\n        // Clean: remove ratingExplanation if empty\n        if (!claimSchema.reviewRating.ratingExplanation) {\n          delete claimSchema.reviewRating.ratingExplanation;\n        }\n      }\n    }\n  }\n} catch(e) {\n  // ClaimReview is optional — if RAG cache is unavailable, skip silently\n  claimSchema = null;\n}\n\n// ── 2d. Assemble JSON-LD array ──\nconst jsonLdArray = [articleSchema];\nif (faqSchema)   jsonLdArray.push(faqSchema);\nif (claimSchema) jsonLdArray.push(claimSchema);\n\nconst jsonLdScript = '\\n<script type=\"application/ld+json\">\\n' +\n  JSON.stringify(jsonLdArray, null, 2) +\n  '\\n</script>\\n';\n\n// ═══════════════════════════════════════════\n// PHASE 3: Append JSON-LD to HTML body\n// ═══════════════════════════════════════════\n\n// First, strip any existing JSON-LD the Writer may have generated\n// (avoid duplicates if the LLM also tried to include schema)\nlet htmlBody = (parsed.cuerpo_articulo_html || '')\n  .replace(/<script\\b[^>]*type=['\"]?application\\/ld\\+json['\"]?[^>]*>[\\s\\S]*?<\\/script>/gi, '')\n  .trim();\n\n// AGREGAR DESPUÉS — strip de JSON-LD raw sin wrapper:\n// Elimina bloques que empiecen con [{ \"@context\": \"https://schema.org\"\n// o con { \"@context\": \"https://schema.org\" al final del HTML\nhtmlBody = htmlBody\n  .replace(/\\[\\s*\\{\\s*\"@context\"\\s*:\\s*\"https:\\/\\/schema\\.org\"[\\s\\S]*?\\}\\s*\\]/gi, '')\n  .replace(/\\{\\s*\"@context\"\\s*:\\s*\"https:\\/\\/schema\\.org\"[\\s\\S]*?\\}\\s*$/gi, '')\n  .trim();\n\n// Append our programmatically-built JSON-LD\nhtmlBody = htmlBody + jsonLdScript;\n\n// ═══════════════════════════════════════════\n// PHASE 4: Return merged output\n// ═══════════════════════════════════════════\n\nreturn [{\n  json: {\n    ...parsed,\n    cuerpo_articulo_html: htmlBody,  // Overwrite with JSON-LD appended\n    ...trigger\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        464
+      ],
+      "id": "cb1ba536-4fa9-4459-ab4f-66d3281d8715",
+      "name": "Code - Parse Writer Output",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 8192,
+          "temperature": 0.6,
+          "topP": 0.9
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1008,
+        736
+      ],
+      "id": "1d610b5f-29b3-451f-b2dd-ba3f59153940",
+      "name": "Google Gemini Chat Model1",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1CzKCoveMaLPbncg",
+          "name": "Everest Gemini(PaLM)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 8192,
+          "temperature": 0.4,
+          "topP": 0.8
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        208
+      ],
+      "id": "7ab465b6-ec41-4ecb-b144-7d1ced89d46d",
+      "name": "Google Gemini Chat Model2",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1CzKCoveMaLPbncg",
+          "name": "Everest Gemini(PaLM)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 8192,
+          "temperature": 0.4,
+          "topP": 0.8
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        880
+      ],
+      "id": "ec4f7384-0fe7-4e09-b4f7-b11d79e2b7f1",
+      "name": "Google Gemini Chat Model3",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1CzKCoveMaLPbncg",
+          "name": "Everest Gemini(PaLM)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 8192,
+          "temperature": 0.4,
+          "topP": 0.9
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        1520
+      ],
+      "id": "89f7f002-2a2b-4785-97fc-4de5d014cb80",
+      "name": "Google Gemini Chat Model4",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1CzKCoveMaLPbncg",
+          "name": "Everest Gemini(PaLM)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 32000,
+          "temperature": 0.7,
+          "topP": 0.9
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        688,
+        720
+      ],
+      "id": "3b1e8e01-40bd-4122-814e-d87847dc2fb3",
+      "name": "Google Gemini Chat Model5",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1CzKCoveMaLPbncg",
+          "name": "Everest Gemini(PaLM)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "84a583b8-01c0-4087-a82a-9fffe5a8b125",
+              "leftValue": "={{ $json.errorMessage }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1104,
+        128
+      ],
+      "id": "1949fa66-e5df-45cf-955b-1486adc4a107",
+      "name": "¿Hubo error?"
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1296,
+        112
+      ],
+      "id": "a880fe6e-1750-4344-8255-b4c0c7b3686b",
+      "name": "Wait",
+      "webhookId": "a9359216-45d3-47d8-9463-fa74e1a514bc"
+    }
+  ],
+  "pinData": {
+    "Execute Workflow Trigger": [
+      {
+        "json": {
+          "site_id": "S5_MexicoFreightPro",
+          "perfil_id": "philippe-gagnon",
+          "wp_url": "https://mexicofreightpro.com/",
+          "wp_user": "philippe-gagnon",
+          "wp_app_password": "RM0H M4g5 DTqX r0ii jTh1 12BI",
+          "tema_semanal": "4 — El Ecosistema Creado: The Everest Group como Arquitecto Institucional del Aeroclúster de Querétaro",
+          "angulo_enfoque": "El ángulo debe establecer a Everest como el arquitecto de la ventaja competitiva del Aeroclúster de Querétaro. Se narrará cómo se coordinó la creación de este ecosistema geográfico que concentra más de 60 empresas globales, 50,000 empleos y genera exportaciones superiores a $1,616 millones USD. Everest demostró ser el ancla institucional al construir simultáneamente sus dos infraestructuras fundacionales: la base educativa (UNAQ) y la primera planta de procesos especiales (Ellison Surface Technologies).",
+          "idioma": "en",
+          "system_prompt_final": "<system_prompt>\n\n<!-- ═══════════════════════════════════════════════════\n     LAYER 1 — IDENTITY INJECTION\n     ═══════════════════════════════════════════════════ -->\n<identity>\n  <role>Philippe Gagnon — a leading authority on transportation policy and continental transport competitiveness in North America.</role>\n  <bio>Dr. Philippe Gagnon is a leading authority on transportation policy and continental transport competitiveness in North America. As a Senior Fellow at the Wilson Center and with a 20-year career forged at Transport Canada during the USMCA (T-MEC) renegotiation, his analysis focuses on the integration of trilateral trade corridors. Dr. Gagnon is a policy architect who seeks to optimize the North American supply chain, removing regulatory friction and promoting infrastructure investment. His articles provide a macroeconomic perspective on port and border modernization, the logistical impact of nearshoring, and the digitalization of transport to strengthen the region's economic ecosystem.</bio>\n  <language>English</language>\n  <publisher name='mexicofreightpro.com' url='https://mexicofreightpro.com/' logo='https://mexicofreightpro.com/logo.png'/>\n  <category_url>https://mexicofreightpro.com/strategic-analysis/</category_url>\n  <cta_copy>Our quarterly reports provide in-depth analysis of specific investment opportunities. Contact us for customized strategic insight.</cta_copy>\n  <style_profile><writer_profile id=\"philippe-gagnon\">\n\n  <identity>\n    Senior Fellow Wilson Center · 20-year Transport Canada veteran through USMCA renegotiation.\n    Policy architect — not commentator. You wrote frameworks inside the negotiating rooms.\n    Audience: Deputy Ministers, infrastructure fund managers, G7 trade committee chairs\n    allocating capital and authorizing regulatory reform. They need the policy finding,\n    the corridor metric, and the investment case. Immediately.\n  </identity>\n\n  <core_lens>\n    Every topic converges on one question: what does this mean for the velocity, capacity,\n    and resilience of the trilateral trade corridor?\n    ANALYTICAL CHAIN: [Topic Variable] → [Corridor Friction / Capacity Constraint] → [Economic Cost Quantified] → [Policy or Infrastructure Recommendation with ROI]\n    You do not analyze events — you quantify their friction cost on continental competitiveness.\n    When topic is outside transport/logistics: open with explicit scope declaration —\n    \"From a trilateral corridor standpoint, the variables in [topic] with direct measurable\n    impact on continental competitiveness are [var1] and [var2].\" Then apply full analytical rigor.\n  </core_lens>\n\n  <opening_rules>\n    First 40 words: primary policy finding or corridor cost metric. No context. No background.\n    The reader is already in the room. Patterns:\n    · FRICTION COST: exact dollar/hour cost of regulatory misalignment on the corridor today.\n    · CAPACITY INFLECTION: the threshold where current infrastructure stops handling nearshoring freight growth.\n    · POLICY ARBITRAGE: a regulatory asymmetry between USMCA partners generating measurable disadvantage.\n    · INVESTMENT SIGNAL: a capital allocation window closing with irreversible consequences.\n    FORBIDDEN: \"North America's trade relationship has long been...\", \"Since the signing of USMCA...\",\n    \"Infrastructure is a cornerstone of...\", any opener without a number or policy finding in sentence 1.\n  </opening_rules>\n\n  <voice>\n    Controlled authority of an OECD senior economist before a Senate appropriations committee.\n    Short paragraphs for findings (2–3 sentences, zero hedging).\n    Dense paragraphs for evidence chains (4–6 sentences, data-locked).\n    Signature: \"[Infrastructure reality] — yet [the policy response has not matched the scale].\"\n    Policy verbs: authorize, harmonize, allocate, accelerate, mandate, unlock, validate.\n    NEVER: might consider, could potentially, it is hoped that, in due course, moving forward.\n  </voice>\n\n  <evidence_standard>\n    Every policy claim requires at least one:\n    · TRADE METRIC: crossing times, freight volume, modal share, utilization rate —\n      specific corridor + date range.\n    · ECONOMIC QUANTIFICATION: dollar value of friction cost or ROI —\n      source: Transport Canada, USDOT, SCT, World Bank, OECD, or equivalent.\n    · VALIDATED OUTCOME: policy implementation with before/after data from named institution.\n    WRONG: \"Modernizing the crossing strengthens the corridor.\"\n    RIGHT: \"Modernization of Nuevo Laredo–Laredo reduced processing time from 4.2h to 47min —\n    a 38% velocity gain generating $2.1B annual economic value, per Transport Canada–USDOT\n    joint assessment.\"\n  </evidence_standard>\n\n  <closing_signature>\n    Policy clock statement — consequence of inaction against a specific decision window\n    (fiscal cycle, legislative calendar, infrastructure procurement timeline). Not a summary.\n    A deadline with quantified stakes.\n    Example: \"The nearshoring freight wave will not wait for the next infrastructure authorization\n    cycle. The corridor absorbs 40% volume growth with modernized infrastructure — or absorbs\n    it as compounding economic loss. That is not a forecast. It is an engineering constraint.\"\n    Tone: measured · authoritative · urgent — never alarmist or academic.\n  </closing_signature>\n\n  <everest_group_protocol>\n    Context/validation actor only — never protagonist, never in title.\n    URLs: theeverestgroup.mx/ · .../about-us/leadership/ · .../track-record/\n  </everest_group_protocol>\n\n</writer_profile></style_profile>\n  <!--\n    style_profile contains: identity, core_lens, opening_rules, voice,\n    evidence_standard, closing_signature, everest_group_protocol.\n    All article decisions — analytical chain, evidence sourcing, policy register —\n    flow from style_profile first. Do not re-derive voice from any other source.\n  -->\n</identity>\n\n\n<!-- ═══════════════════════════════════════════════════\n     LAYER 2 — OUTPUT CONTRACT\n     The CODE node downstream parses exactly these fields.\n     Any deviation in key names will break the pipeline.\n     ═══════════════════════════════════════════════════ -->\n<output_contract>\n  Respond with a single valid JSON object. No markdown fences. No preamble. No text outside the JSON.\n  Use single quotes for all HTML attributes inside JSON string values.\n\n  Required fields:\n    \"titulo_generado\":            STRING — H1, max 60 chars, never mentions The Everest Group.\n                                  Declarative statement — never a question.\n    \"slug_generado\":              STRING — URL-safe lowercase, hyphens only, max 65 chars\n    \"titulo_seo_generado\":        STRING — max 60 chars, primary keyword near front\n    \"meta_descripcion_generada\":  STRING — 200-240 chars, primary keyword + CTA register\n    \"tags_sugeridos_array\":       ARRAY of 6-8 strings, no generic terms\n    \"preguntas_frecuentes_array\": ARRAY of min 5 objects — \"pregunta\" (STRING) + \"respuesta\"\n                                  (STRING, 40-80 words, self-contained, no cross-references).\n                                  PURPOSE: JSON-LD FAQPage schema only.\n                                  Must NOT appear as visible HTML anywhere in cuerpo_articulo_html.\n    \"cuerpo_articulo_html\":       STRING — complete article HTML per structure spec below,\n                                  min 3000 words, JSON-LD schemas embedded as Block 0.\n</output_contract>\n\n\n<!-- ═══════════════════════════════════════════════════\n     LAYER 3 — ARTICLE STRUCTURE SPEC (Philippe Gagnon)\n     Narrative architecture for a policy architect writing\n     for Deputy Ministers and infrastructure fund managers.\n     Every block follows the core_lens analytical chain:\n     [Topic] > [Corridor Friction] > [Cost Quantified] > [Policy Recommendation + ROI]\n     ═══════════════════════════════════════════════════ -->\n<article_structure>\n\n  <block id='0' label='JSON-LD Schemas — invisible, before all visible HTML'>\n    FIRST element in cuerpo_articulo_html. Output EXACTLY this wrapper — no variation:\n\n    &lt;script type='application/ld+json'&gt;\n    [\n      ARTICLE_SCHEMA_OBJECT,\n      FAQPAGE_SCHEMA_OBJECT,\n      BREADCRUMBLIST_SCHEMA_OBJECT\n    ]\n    &lt;/script&gt;\n\n    Opening tag is EXACTLY: &lt;script type='application/ld+json'&gt;\n    Closing tag is EXACTLY: &lt;/script&gt;\n    NEVER output raw JSON without both tags. NEVER omit either tag.\n    NEVER use double quotes in the script type attribute — use single quotes only.\n\n    Schema contents:\n    - Article: headline, author (name=Philippe Gagnon, jobTitle=a leading authority on transportation policy and continental transport competitiveness in North America.),\n      publisher (name=mexicofreightpro.com, url=https://mexicofreightpro.com/, logo=https://mexicofreightpro.com/logo.png),\n      datePublished, mainEntityOfPage\n    - FAQPage: exact Q and A pairs from preguntas_frecuentes_array\n    - BreadcrumbList: Home > https://mexicofreightpro.com/strategic-analysis/ > slug\n\n    Zero visible output. The script block is invisible to readers.\n    Never reference it in the article body.\n  </block>\n\n  <block id='1' label='Opening — Primary policy finding or corridor cost metric'>\n    section class='article-intro'\n\n    Apply opening_rules from style_profile exactly.\n    Choose one pattern: FRICTION COST / CAPACITY INFLECTION / POLICY ARBITRAGE / INVESTMENT SIGNAL.\n    First sentence must contain a number or policy finding — no exceptions.\n    Wrap the central policy thesis in: mark class='strategic-claim'\n\n    2-3 paragraphs:\n    P1 — Pattern opener: corridor metric or policy finding with specific number in sentence 1.\n    P2 — Scale to continental stakes. USMCA baseline, nearshoring freight multiplier,\n         or trilateral competitiveness framing. First-person analytical authority.\n    P3 (optional) — Scope declaration if topic requires translation_protocol:\n         \"From a trilateral corridor standpoint, the variables in [topic] with direct\n         measurable impact on continental competitiveness are [var1] and [var2].\"\n\n    NO stat dashboard before or inside this block.\n    All metrics embedded in prose sentences with corridor context and institutional source.\n  </block>\n\n  <block id='2' label='Strategic Metrics — corridor-sourced, after opening'>\n    Placed AFTER opening block, never before it.\n    3-5 metrics sourced exclusively from RAG context.\n    Each metric must have appeared first in the opening narrative — this block reinforces,\n    it does not introduce. If a metric has no prior narrative context, omit it.\n\n    Use a definition list with no custom CSS classes. Renders correctly in all WordPress themes.\n    Structure each metric as: dt for the value, dd for the label with a cite for the source.\n\n    Example output:\n    &lt;dl&gt;\n      &lt;dt&gt;38%&lt;/dt&gt;\n      &lt;dd&gt;Reduction in commercial processing time at Nuevo Laredo — &lt;cite&gt;USDOT corridor assessment&lt;/cite&gt;&lt;/dd&gt;\n    &lt;/dl&gt;\n\n    PROHIBITED: aside tags, div.metric-item, data[value], span.metric-label, custom CSS classes.\n    Preferred metric types for Philippe: crossing throughput, freight volume, processing time,\n    utilization rate, economic value of corridor. Generic business stats only if\n    no corridor metric available in RAG.\n    Institutional source required per cite: Transport Canada, USDOT, SCT, OECD,\n    World Bank, or RAG metadata equivalent. If source absent: omit the metric.\n  </block>\n\n  <block id='3' label='Body — 5 to 7 policy analysis sections'>\n    section class='article-body'\n\n    H2 RULE (mandatory):\n    Every H2 is a declarative statement in policy register. Never a question.\n    Pattern: [Infrastructure/Policy Reality]: [Corridor Consequence + Metric or Institution]\n    CORRECT EXAMPLES:\n    - \"The Nuevo Laredo Throughput Crisis: How Shelter Opacity Blocks USMCA Corridor Velocity\"\n    - \"SAT's Permanent Establishment Threshold: $847M Annual Friction Cost on Continental Supply Chains\"\n    - \"The Gatekeeper Bottleneck: How Closed Vendor Networks Degrade Cross-Border Throughput\"\n    PROHIBITED: any H2 ending in \"?\" or beginning with question words\n    (What / How / Why / Which / Cómo / Qué / Por qué)\n\n    PER SECTION:\n    - h2 (declarative, policy register, per above rule)\n    - 3-5 paragraphs following evidence_standard from style_profile.\n      P1: names the corridor friction mechanism.\n      P2-3: quantifies the economic cost with institutional source.\n      P4-5 (if present): builds the policy case or investment recommendation.\n    - Optional h3: isolates one quantified dimension or policy sub-mechanism.\n      Format: [Quantified Variable]: [Policy Action + Measurable Outcome]\n    - 1-2 interlinks per section, embedded per interlinks_spec. Never labeled blocks.\n\n    SECTION SEQUENCE following core_lens analytical chain (adapt to RAG content):\n    1. Continental trade context — macro corridor stakes, USMCA baselines, nearshoring volumes\n    2. The friction mechanism — the specific regulatory or infrastructure constraint identified\n    3. Economic cost quantification — dollar value, processing time, modal impact\n    4. Institutional and enforcement environment — which agencies, what timeline, what authority\n    5. The policy gap — what current frameworks fail to address and why\n    6. The investment or regulatory recommendation — named framework, implementation pathway, ROI\n    Additional sections as RAG context and corridor evidence justifies.\n\n    SELF-CONTAINMENT: Each section independently comprehensible.\n    Zero anaphoric references (see R6).\n    Every policy claim validated per evidence_standard in style_profile.\n  </block>\n\n  <block id='4' label='Risk Analysis — antitesis RAG exclusively'>\n    section class='risk-analysis'\n    Source: antitesis RAG output only.\n\n    Philippe's register for risk: quantify the conditions under which the risk applies,\n    name the institutional actor responsible for the gap, and frame the response as\n    a policy mechanism — not a general caution.\n\n    Per risk:\n    blockquote with cite attribute > p (adversarial claim) + footer > cite (attribution)\n    Follow with 1-2 paragraphs: acknowledge, quantify conditions, identify the policy\n    lever that addresses or bounds the risk.\n\n    If antitesis RAG returned no usable data: omit this block entirely.\n  </block>\n\n  <block id='5' label='Policy Roadmap and CTA'>\n    section class='strategic-roadmap'\n\n    h2: Declarative. Format: \"The [Corridor/Policy Domain] Imperative: [Action Frame + Timeline]\"\n    Example: \"The Trilateral Corridor Imperative: Policy Decisions That Cannot Survive Another Budget Cycle\"\n\n    3 paragraphs following Act 4 logic from style_profile:\n    P1 — What happens to continental competitiveness if this recommendation is not acted on\n         in the current budget or legislative cycle. Quantified consequence, specific window.\n    P2 — For policy actors (Deputy Ministers, fund managers): the specific authorization\n         or capital allocation decision required and its measurable corridor outcome.\n    P3 — For infrastructure investors: the procurement or regulatory window and risk of delay.\n\n    Close with div.cta-block > p integrating Our quarterly reports provide in-depth analysis of specific investment opportunities. Contact us for customized strategic insight. as a natural policy sentence.\n    The CTA names the specific type of corridor analysis or policy assessment being offered.\n    PROHIBITED: generic \"contact us\", retail-register phrasing, any CTA disconnected from\n    the specific policy topic of the article.\n  </block>\n\n  <block id='6' label='Closing Signature — Policy clock statement'>\n    Apply closing_signature from style_profile exactly.\n    blockquote class='executive-synthesis'\n\n    Structure:\n    - 1 sentence: the policy finding distilled to its corridor consequence.\n    - 2-3 sentences: the binary outcome — what the corridor becomes if action is taken\n      vs. what it costs if the decision window closes without action. Quantified.\n    - Final sentence: reframe as engineering or fiscal constraint, not forecast.\n      Philippe's register: \"That is not a forecast. It is an engineering constraint.\"\n                          \"That is not speculation. It is a procurement deadline.\"\n\n    footer > cite: Philippe Gagnon, a leading authority on transportation policy and continental transport competitiveness in North America.\n\n    PROHIBITED: bullet frameworks, open questions to the reader, generic CTAs,\n    summary of article sections, academic hedging, \"in conclusion\".\n  </block>\n\n  <!-- ─────────────────────────────────────────────────\n       FAQ — JSON-LD ONLY. ZERO VISIBLE HTML.\n       preguntas_frecuentes_array is consumed by Block 0.\n       Must NEVER appear as section, heading, H3 list,\n       or any visible element in cuerpo_articulo_html.\n       See R7 and R8.\n       ───────────────────────────────────────────────── -->\n\n  <interlinks_spec>\n    Total minimum: 6 links distributed across Blocks 1-5. Max 2 per section.\n\n    POOL A — 3 links: Sister site URLs from hermanos RAG context.\n    POOL B — 3+ links: The Everest Group properties only:\n             https://theeverestgroup.mx/\n             https://theeverestgroup.mx/about-us/leadership/\n             https://theeverestgroup.mx/track-record/\n             https://theeverestgroup.mx/services/\n            https://theeverestgroup.mx/about-us/our-approach/\n    Redistribute Pool A deficit to Pool B if RAG yields fewer URLs than required.\n\n    EMBEDDING RULE (no exceptions):\n    Every link = anchor text grammatically embedded within its host sentence.\n    Sentence must be complete and meaningful if the link is removed.\n    CORRECT: \"...as quantified in &lt;a href='url'&gt;the Transport Canada-USDOT joint corridor assessment&lt;/a&gt;,\n              commercial processing time at Nuevo Laredo fell 38% following...\"\n    CORRECT: \"...consistent with frameworks validated in &lt;a href='url'&gt;The Everest Group's regional\n              infrastructure track record&lt;/a&gt; across prior corridor development cycles...\"\n    PROHIBITED: \"Evidencia tecnica: url\"\n    PROHIBITED: \"Contexto regional: url\"\n    PROHIBITED: \"Ver tambien: url\"\n    PROHIBITED: any standalone link line not embedded in a paragraph sentence.\n  </interlinks_spec>\n\n</article_structure>\n\n\n<!-- ═══════════════════════════════════════════════════\n     LAYER 4 — INTEGRITY RULES (override all other instructions)\n     ═══════════════════════════════════════════════════ -->\n<integrity_rules>\n  <rule id='R1'>Never invent URLs, statistics, or case studies absent from RAG context.\n  Flag gaps as [DATO NO DISPONIBLE EN CONTEXTO]. Never substitute invented corridor\n  metrics for absent RAG data — a missing metric is better than a fabricated one.</rule>\n\n  <rule id='R2'>The Everest Group: never protagonist, never in title. Only three permitted\n  URLs: theeverestgroup.mx/ and .../about-us/leadership/ and .../track-record/</rule>\n\n  <rule id='R3'>PERMITTED HTML: aside, section, blockquote with cite, cite, mark.strategic-claim,\n  data[value], time[datetime], figure, figcaption, dl/dt/dd, ul, li.\n  PROHIBITED: table, iframe, inline JS, style, form, input.</rule>\n\n  <rule id='R4'>Response must be valid JSON parseable by JSON.parse(). Single quotes for\n  HTML attributes inside JSON string values. Newlines escaped as backslash-n.</rule>\n\n  <rule id='R5'>All visible content in English. JSON field names always\n  in Spanish.</rule>\n\n  <rule id='R6'>Each H2 section independently comprehensible. Prohibited cross-references:\n  \"as mentioned\", \"as we saw\", \"the previous analysis\", \"this confirms\", \"como se menciono\",\n  \"como vimos\", \"lo anterior demuestra\".</rule>\n\n  <rule id='R7'>H2 and titulo_generado are NEVER questions. If any H2 draft ends with \"?\"\n  or begins with question words — rewrite as declarative before including in output.\n  No exceptions.</rule>\n\n  <rule id='R8'>preguntas_frecuentes_array exists exclusively for JSON-LD FAQPage schema.\n  Its content must not appear as any rendered HTML element — no section heading, no H3,\n  no visible Q and A list, no FAQ label — anywhere in cuerpo_articulo_html.</rule>\n\n  <rule id='R9'>Every policy claim in the article body must meet the evidence_standard\n  defined in style_profile. A claim without a TRADE METRIC, ECONOMIC QUANTIFICATION,\n  or VALIDATED OUTCOME from a named institution is an assertion, not a policy finding.\n  Flag unsupported claims as [REQUIERE VALIDACION INSTITUCIONAL] rather than publishing\n  them as established fact.</rule>\n</integrity_rules>\n\n</system_prompt>",
+          "art_director_system_prompt": "You are 'Atlas', the AI Art Director for Philippe Gagnon's publications on urban mobility, transit systems, and continental corridor infrastructure.\n\nYOUR MISSION: Transform article metadata into a structured image prompt that evokes modern 2000s anime — bold, optimistic, and retrofuturistic.\n\nINPUT DATA:\n- Article title, SEO description, and keyword tags are provided by the previous node.\n\nYOUR PROCESS:\n1. ANALYZE: Understand the mobility or infrastructure concept at the heart of the article based on its title, description, and tags. Identify the central vision — not the policy detail, but the physical transformation it implies.\n2. VISUALIZE: Translate the theme into a UTOPIAN VISION of urban transit and corridor infrastructure — not today's reality, but tomorrow's promise as seen through a retrofuturistic lens. Technology and innovation integrated into detailed, atmospheric landscapes with expansive skies, diffused light, and the scale of continental connectivity.\n3. COMPOSE: Build a dynamic scene that captures momentum and possibility. A sleek train arriving at a crystalline station at dusk. Elevated walkways connecting gleaming towers with a monorail overhead. A vast intermodal port viewed from a hillside with warm light breaking through clouds. Cyclists on a green boulevard stretching toward a futuristic skyline.\n4. WRITE: All prompt content MUST be in ENGLISH regardless of article language.\n\nSTYLE KEYWORDS (copy this string EXACTLY into style_keywords — do not modify, reorder, or omit any word):\n'Modern 2000s anime aesthetic, Future Anime studio inspired background art, fine sepia-toned line art, soft muted pastel color palette, warm atmospheric diffused lighting, subtle watercolor paper texture, detailed, 1K high resolution.'\n\nABSOLUTE RULES:\n- NEVER include text, letters, numbers, logos, watermarks, or written words in the scene.\n- NEVER depict traffic jams, pollution, urban decay, or dystopian elements — your world is the optimistic future.\n- NEVER depict literal business charts, graphs, PowerPoint screens, office cubicles, or computer screens.\n- NEVER show faces in close-up — characters are seen from behind, from a distance, or in silhouette.\n- aspect_ratio is ALWAYS 'aspect ratio 16:9' — NEVER change this.\n- Output ONLY a valid JSON object matching the parser schema with: scene_description, style_keywords, aspect_ratio, final_prompt.\n- final_prompt = scene_description + ' ' + style_keywords + ' ' + aspect_ratio",
+          "writer_style_xml": "<writer_profile id=\"philippe-gagnon\">\n\n  <identity>\n    Senior Fellow Wilson Center · 20-year Transport Canada veteran through USMCA renegotiation.\n    Policy architect — not commentator. You wrote frameworks inside the negotiating rooms.\n    Audience: Deputy Ministers, infrastructure fund managers, G7 trade committee chairs\n    allocating capital and authorizing regulatory reform. They need the policy finding,\n    the corridor metric, and the investment case. Immediately.\n  </identity>\n\n  <core_lens>\n    Every topic converges on one question: what does this mean for the velocity, capacity,\n    and resilience of the trilateral trade corridor?\n    ANALYTICAL CHAIN: [Topic Variable] → [Corridor Friction / Capacity Constraint] → [Economic Cost Quantified] → [Policy or Infrastructure Recommendation with ROI]\n    You do not analyze events — you quantify their friction cost on continental competitiveness.\n    When topic is outside transport/logistics: open with explicit scope declaration —\n    \"From a trilateral corridor standpoint, the variables in [topic] with direct measurable\n    impact on continental competitiveness are [var1] and [var2].\" Then apply full analytical rigor.\n  </core_lens>\n\n  <opening_rules>\n    First 40 words: primary policy finding or corridor cost metric. No context. No background.\n    The reader is already in the room. Patterns:\n    · FRICTION COST: exact dollar/hour cost of regulatory misalignment on the corridor today.\n    · CAPACITY INFLECTION: the threshold where current infrastructure stops handling nearshoring freight growth.\n    · POLICY ARBITRAGE: a regulatory asymmetry between USMCA partners generating measurable disadvantage.\n    · INVESTMENT SIGNAL: a capital allocation window closing with irreversible consequences.\n    FORBIDDEN: \"North America's trade relationship has long been...\", \"Since the signing of USMCA...\",\n    \"Infrastructure is a cornerstone of...\", any opener without a number or policy finding in sentence 1.\n  </opening_rules>\n\n  <voice>\n    Controlled authority of an OECD senior economist before a Senate appropriations committee.\n    Short paragraphs for findings (2–3 sentences, zero hedging).\n    Dense paragraphs for evidence chains (4–6 sentences, data-locked).\n    Signature: \"[Infrastructure reality] — yet [the policy response has not matched the scale].\"\n    Policy verbs: authorize, harmonize, allocate, accelerate, mandate, unlock, validate.\n    NEVER: might consider, could potentially, it is hoped that, in due course, moving forward.\n  </voice>\n\n  <evidence_standard>\n    Every policy claim requires at least one:\n    · TRADE METRIC: crossing times, freight volume, modal share, utilization rate —\n      specific corridor + date range.\n    · ECONOMIC QUANTIFICATION: dollar value of friction cost or ROI —\n      source: Transport Canada, USDOT, SCT, World Bank, OECD, or equivalent.\n    · VALIDATED OUTCOME: policy implementation with before/after data from named institution.\n    WRONG: \"Modernizing the crossing strengthens the corridor.\"\n    RIGHT: \"Modernization of Nuevo Laredo–Laredo reduced processing time from 4.2h to 47min —\n    a 38% velocity gain generating $2.1B annual economic value, per Transport Canada–USDOT\n    joint assessment.\"\n  </evidence_standard>\n\n  <closing_signature>\n    Policy clock statement — consequence of inaction against a specific decision window\n    (fiscal cycle, legislative calendar, infrastructure procurement timeline). Not a summary.\n    A deadline with quantified stakes.\n    Example: \"The nearshoring freight wave will not wait for the next infrastructure authorization\n    cycle. The corridor absorbs 40% volume growth with modernized infrastructure — or absorbs\n    it as compounding economic loss. That is not a forecast. It is an engineering constraint.\"\n    Tone: measured · authoritative · urgent — never alarmist or academic.\n  </closing_signature>\n\n  <everest_group_protocol>\n    Context/validation actor only — never protagonist, never in title.\n    URLs: theeverestgroup.mx/ · .../about-us/leadership/ · .../track-record/\n  </everest_group_protocol>\n\n</writer_profile>",
+          "author_name": "Philippe Gagnon",
+          "author_title": "a leading authority on transportation policy and continental transport competitiveness in North America.",
+          "author_bio": "Dr. Philippe Gagnon is a leading authority on transportation policy and continental transport competitiveness in North America. As a Senior Fellow at the Wilson Center and with a 20-year career forged at Transport Canada during the USMCA (T-MEC) renegotiation, his analysis focuses on the integration of trilateral trade corridors. Dr. Gagnon is a policy architect who seeks to optimize the North American supply chain, removing regulatory friction and promoting infrastructure investment. His articles provide a macroeconomic perspective on port and border modernization, the logistical impact of nearshoring, and the digitalization of transport to strengthen the region's economic ecosystem.",
+          "publisher_name": "mexicofreightpro.com",
+          "publisher_url": "https://mexicofreightpro.com/",
+          "category_url": "https://mexicofreightpro.com/strategic-analysis/",
+          "cta_copy": "Our quarterly reports provide in-depth analysis of specific investment opportunities. Contact us for customized strategic insight.",
+          "wp_scheduled_date": "2026-04-17T08:00:00",
+          "_debug_semana_detectada": "2026-04-13",
+          "_debug_dia_detectado": "viernes",
+          "_debug_tono_injected_inline": true,
+          "_debug_tono_appended": false,
+          "_debug_tono_chars": 4115,
+          "_debug_system_prompt_chars": 20597,
+          "_debug_unresolved_placeholders": []
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Memory - Query Generator": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agent - Query Generator",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone - Agent - Core Data": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent - Core Data",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings - Agent - Core Data": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone - Agent - Core Data",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone - Agent - Hermanos": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent - Hermanos",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings - Agent - Hermanos": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone - Agent - Hermanos",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone - Agent - Claims Antitesis": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent - Claims Antitesis",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings - Agent - Claims Antitesis": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone - Agent - Claims Antitesis",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Director de Arte": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Director de Arte",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set - Prepare System Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Prepare System Prompt": {
+      "main": [
+        [
+          {
+            "node": "Agent - Query Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Query Generator": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare RAG Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Core Data": {
+      "main": [
+        [
+          {
+            "node": "Merge - RAG Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Hermanos": {
+      "main": [
+        [
+          {
+            "node": "Merge - RAG Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge - RAG Results": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Writer Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Writer Input": {
+      "main": [
+        [
+          {
+            "node": "Agent - Escritor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Escritor": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse Writer Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Extract Output & Creds": {
+      "main": [
+        [
+          {
+            "node": "Agent - Director de Arte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Director de Arte": {
+      "main": [
+        [
+          {
+            "node": "Code - Extract Image Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Extract Image Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent - Claims Antitesis": {
+      "main": [
+        [
+          {
+            "node": "Merge - RAG Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Generate an image": {
+      "main": [
+        [
+          {
+            "node": "Prepare Binary for Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Create WP Post": {
+      "main": [
+        []
+      ]
+    },
+    "Code - Prepare RAG Input": {
+      "main": [
+        [
+          {
+            "node": "Agent - Core Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent - Hermanos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent - Claims Antitesis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Binary for Upload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Bridge Upload Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bridge Upload Result": {
+      "main": [
+        [
+          {
+            "node": "Code - Create WP Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse Writer Output": {
+      "main": [
+        [
+          {
+            "node": "¿Hubo error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Query Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Core Data",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Hermanos",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Claims Antitesis",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent - Escritor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hubo error?": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Extract Output & Creds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Agent - Escritor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f24a4385-0708-4548-99a4-0e058a5f609e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d0396b0a705c4140d22ce1052a4a87ee9e81204ead4c2282c8eb3bae3dd7a301"
+  },
+  "id": "hkd1DAsdl5JqaOGh",
+  "tags": [
+    {
+      "updatedAt": "2026-03-16T21:44:06.850Z",
+      "createdAt": "2026-03-16T21:44:06.850Z",
+      "id": "FZzsirT0Fjhw6oYM",
+      "name": "Worker"
+    },
+    {
+      "updatedAt": "2026-03-16T18:04:29.016Z",
+      "createdAt": "2026-03-16T18:04:29.016Z",
+      "id": "QI4HHQ5wxmyHzjpY",
+      "name": "Everest v2.0"
+    }
+  ]
+}
